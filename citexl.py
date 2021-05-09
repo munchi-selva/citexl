@@ -75,7 +75,7 @@ COL_HDR_DEFN       = '定義'
 CITATION_SHEETS = [
     '一', '二', '三', '四', '五', '六', '七', '八', '九', '十',
     '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十',
-    '二十一', '二十二', '二十三', '二十四', '二十五', '二十六', '二十 七', '二十八', '二十 九', '三十',
+    '二十一', '二十二', '二十三', '二十四', '二十五', '二十六', '二十七', '二十八', '二十九', '三十',
     '三一', '三十二', '三十三', '三十四', '三十五', '三十六', '三十七', '三十八', '三十九', '四十',
     '四十一', '四十二', '四十三', '四十四', '四十五', '四十六', '四十七', '四十八', '四十九', '五十'
 ]
@@ -254,7 +254,8 @@ def get_refs_for_ws_phrases(wb,
             #
             # Find the first cell to define the phrase
             #
-            referenced_cell = find_definition(wb, phrase_cell.value)
+            referenced_cells =  find_matches(wb, COL_HDR_PHRASE, phrase_cell.value, True, 1)
+            referenced_cell = referenced_cells[0] if len(referenced_cells) > 0 else None
 
             if referenced_cell and not referenced_cell == phrase_cell: 
                 #
@@ -401,18 +402,18 @@ def column_values(wb, ws_name, col_letter):
 ###############################################################################
 def find_matches(wb,
                  col_name,
-                 value,
+                 search_str,
                  defn_required = False,
                  max_instances = -1):
     # type: (Workbook, str, str, bool, int) -> list[Cell]
     """
     Finds cells matching certain conditions on a given column.
 
-    :param  wb:     The workbook
-    :param  col_name:   
-    :param  value:
-    :param  defn_required:
-    :param: max_instances
+    :param  wb:             The workbook
+    :param  col_name:       The name of the column to be searched
+    :param  search_str:     The search string that is to be matched
+    :param  defn_required:  Only return cells associated with a definition
+    :param: max_instances   The maximum number of matched cells to return
     :returns: The matching cells
     """
     matching_cells = list()
@@ -421,7 +422,7 @@ def find_matches(wb,
     for ws in citation_sheets:
         search_col  = get_col_id(ws, col_name)
         COL_ID_DEFN = get_col_id(ws, COL_HDR_DEFN)
-        ws_matches  = [cell for cell in ws[search_col] if cell.value == value]
+        ws_matches  = [cell for cell in ws[search_col][1:] if cell.value and re.match(search_str, cell.value)]
         if defn_required:
            ws_matches = [cell for cell in ws_matches if
                          ws[COL_ID_DEFN][cell.row - 1].style == STYLE_GENERAL]
@@ -431,39 +432,6 @@ def find_matches(wb,
             break
 
     return matching_cells
-###############################################################################
-
-
-###############################################################################
-def find_definition(wb,
-                    phrase):
-    # type: (Workbook, str) -> Cell
-    """
-    Finds the first cell that gives a definition for a phrase in a citation
-    workbook.
-
-    :param  wb:     The workbook
-    :param  phrase: The phrase
-    :returns: The cell
-    """
-    m = """
-    matching_cell = None
-
-    citation_sheets = get_citation_sheets(wb)
-    for ws in citation_sheets:
-        COL_ID_PHRASE   = get_col_id(ws, COL_HDR_PHRASE)
-        COL_ID_DEFN     = get_col_id(ws, COL_HDR_DEFN)
-        matching_cells = [cell for cell in ws[COL_ID_PHRASE] if
-                          cell.value == phrase and
-                          ws[COL_ID_DEFN][cell.row].style == STYLE_GENERAL]
-        if len(matching_cells) != 0:
-            matching_cell = matching_cells[0]
-            break
-
-    return matching_cell
-    """
-    defn_matches =  find_matches(wb, COL_HDR_PHRASE, phrase, True, 1)
-    return defn_matches[0] if len(defn_matches) > 0 else None
 ###############################################################################
 
 
@@ -550,22 +518,8 @@ def show_definition(cell,
 
 
 ###############################################################################
-def display_definition(wb,
-                       phrase):
-    # type: (Workbook, str) -> None
-    """
-    Displays the first definition given for a phrase in a citation workbook.
-
-    :param  wb: The workbook
-    """
-    cell = find_definition(wb, phrase)
-    show_definition(cell)
-###############################################################################
-
-
-###############################################################################
 def display_matches(wb,
-                    value,
+                    search_str,
                     col_name = COL_HDR_PHRASE,
                     defn_required = True,
                     max_instances = -1,
@@ -575,7 +529,7 @@ def display_matches(wb,
     # 
     """
     """
-    matches = find_matches(wb, col_name, value, defn_required, max_instances)
+    matches = find_matches(wb, col_name, search_str, defn_required, max_instances)
     for cell in matches:
         show_definition(cell, cols_to_show, show_cell_ref)
 ###############################################################################
@@ -736,8 +690,6 @@ def fill_in_last_sheet(wb):
     missing = find_cells_with_no_def(ws, min_num_chars = 2, max_num_chars = 0)
     for m in missing:
         print('{} {}'.format(m.row, m.value))
-
-    # save_changes(wb)
 ###############################################################################
 
 
@@ -769,14 +721,7 @@ def main():
 if __name__ == "__main__":
     main()
     notes_wb = load_workbook(SOURCE_FILE)
-#   display_matches(notes_wb, 'ONOM', col_name = COL_HDR_CATEGORY, cols_to_show
-#           = [COL_HDR_PHRASE, COL_HDR_JYUTPING, COL_HDR_DEFN], show_cell_ref =
-#           False)
 
-#   cell = find_definition(notes_wb, '軋')
-#   display_definition(notes_wb, '軋')
-#   display_definition(notes_wb, '崆')
- 
     fill_in_last_sheet(notes_wb)
     save_changes(notes_wb)
 
