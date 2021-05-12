@@ -267,7 +267,7 @@ def get_refs_for_ws_phrases(wb,
             #
             # Find the first cell to define the phrase
             #
-            referenced_cells =  find_matches(wb, COL_HDR_PHRASE, phrase_cell.value, CellType.CT_DEFN, 1)
+            referenced_cells = find_matches(wb, COL_HDR_PHRASE, [phrase_cell.value], False, CellType.CT_DEFN, 1)
             referenced_cell = referenced_cells[0] if len(referenced_cells) > 0 else None
 
             if referenced_cell and not referenced_cell == phrase_cell: 
@@ -314,14 +314,6 @@ def build_reference(referenced_ws,
                                 the reference, but do not modify the data
     :returns: Nothing
     """
-#   if audit_only:
-#       print('{}!{}{} --> {}!{}{}'.format(referring_ws.title,
-#                                          referring_cell.column_letter,
-#                                          referring_cell.row,
-#                                          referenced_ws.title,
-#                                          referenced_cell.column_letter,
-#                                          referenced_cell.row))
-
     #
     # Generate an identifier for the defined name, and the label for referring
     # to the referenced cell (i.e. displayed in the referring cell)
@@ -346,7 +338,6 @@ def build_reference(referenced_ws,
     write_needed = referring_cell.value is None or (overwrite and referring_cell.value != label)
     referring_cell_loc = '{}{}'.format(referring_cell.column_letter,
                                        referring_cell.row)
-#   if not referring_cell.value is None and referring_cell.value != label:
     if write_needed:
         print('\t{}!{} current value = {}'.format(referring_ws.title,
                                                 referring_cell_loc,
@@ -415,16 +406,19 @@ def column_values(wb, ws_name, col_letter):
 ###############################################################################
 def find_matches(wb,
                  col_name,
-                 search_str,
-                 cell_type = CellType.CT_ALL,
-                 max_instances = -1):
-    # type: (Workbook, str, str, bool, int) -> list[Cell]
+                 search_terms,
+                 do_re_search   = False,
+                 cell_type      = CellType.CT_ALL,
+                 max_instances  = -1):
+    # type: (Workbook, str, List[string], bool, CellType, int) -> List[Cell]
     """
     Finds cells matching certain conditions on a given column.
 
     :param  wb:             The workbook
     :param  col_name:       The name of the column to be searched
-    :param  search_str:     The search string that is to be matched
+    :param  search_terms:   The search terms to be matched
+    :param  do_re_search:   Whether the search terms should be treated as
+                            regular expressions
     :param  cell_type:      The type of cells to search for
     :param: max_instances   The maximum number of matched cells to return
     :returns: The matching cells
@@ -435,8 +429,24 @@ def find_matches(wb,
     for ws in citation_sheets:
         search_col  = get_col_id(ws, col_name)
         COL_ID_DEFN = get_col_id(ws, COL_HDR_DEFN)
-        ws_matches  = [cell for cell in ws[search_col][1:] if cell.value and re.match(search_str, cell.value)]
 
+        #
+        # Build the list of matches in the worksheet: begin with the cells
+        # that provide a value
+        #
+        ws_matches = [cell for cell in ws[search_col][1:] if cell.value]
+
+        #
+        # Filter based on the search terms
+        #
+        if do_re_search:
+            ws_matches  = [cell for cell in ws_matches if any(re.match(term, cell.value) for term in search_terms)]
+        else:
+            ws_matches  = [cell for cell in ws_matches if cell.value in search_terms]
+
+        #
+        # Filter based on cell type
+        #
         if cell_type == CellType.CT_DEFN:
            ws_matches = [cell for cell in ws_matches if
                          ws[COL_ID_DEFN][cell.row - 1].style == STYLE_GENERAL]
@@ -444,6 +454,9 @@ def find_matches(wb,
            ws_matches = [cell for cell in ws_matches if
                          ws[COL_ID_DEFN][cell.row - 1].style == STYLE_LINK]
 
+        #
+        # Add matches to return list, respecting the maximum instances limit
+        #
         cells_to_add = len(ws_matches) if max_instances < 0 else max_instances - len(matching_cells)
         matching_cells += ws_matches[:cells_to_add]
         if (max_instances > 0 and len(matching_cells) == max_instances):
@@ -511,17 +524,18 @@ def show_definition(cell,
 
 ###############################################################################
 def display_matches(wb,
-                    search_str,
-                    col_name = COL_HDR_PHRASE,
-                    cell_type = CellType.CT_DEFN,
-                    max_instances = -1,
-                    cols_to_show = [COL_HDR_CATEGORY, COL_HDR_PHRASE,
-                                    COL_HDR_JYUTPING, COL_HDR_DEFN],
-                    show_cell_ref = True):
+                    search_terms,
+                    do_re_search    = False,
+                    col_name        = COL_HDR_PHRASE,
+                    cell_type       = CellType.CT_DEFN,
+                    max_instances   = -1,
+                    cols_to_show    = [COL_HDR_CATEGORY, COL_HDR_PHRASE,
+                                       COL_HDR_JYUTPING, COL_HDR_DEFN],
+                    show_cell_ref   = True):
     # 
     """
     """
-    matches = find_matches(wb, col_name, search_str, cell_type, max_instances)
+    matches = find_matches(wb, col_name, search_terms, do_re_search, cell_type, max_instances)
     for cell in matches:
         show_definition(cell, cols_to_show, show_cell_ref)
 ###############################################################################
@@ -714,19 +728,8 @@ if __name__ == "__main__":
     main()
     notes_wb = load_workbook(SOURCE_FILE)
 
-    cell = find_matches(notes_wb,
-                           COL_HDR_PHRASE,
-                           '填',
-                           CellType.CT_DEFN,
-                           1)[0]
-    ws = cell.parent
-
-    referring_ws = notes_wb.get_sheet_by_name('二十七')
-    referring_cell = referring_ws['H110']
-    build_reference(ws, cell, referring_ws, referring_cell)
-
 #   fill_in_last_sheet(notes_wb)
-    save_changes(notes_wb)
+#   save_changes(notes_wb)
 
 #   if  sys.version_info.major ==  2:
 #       cjk = characterlookup.CharacterLookup('T')
