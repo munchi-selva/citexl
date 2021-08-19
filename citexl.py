@@ -89,7 +89,8 @@ CITATION_SHEETS = [
     '一', '二', '三', '四', '五', '六', '七', '八', '九', '十',
     '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十',
     '二十一', '二十二', '二十三', '二十四', '二十五', '二十六', '二十七', '二十八', '二十九', '三十',
-    '三一', '三十二', '三十三', '三十四', '三十五', '三十六', '三十七', '三十八', '三十九', '四十',
+    '三圖',
+    '三十一', '三十二', '三十三', '三十四', '三十五', '三十六', '三十七', '三十八', '三十九', '四十',
     '四十一', '四十二', '四十三', '四十四', '四十五', '四十六', '四十七', '四十八', '四十九', '五十'
 ]
 
@@ -118,6 +119,7 @@ CJK_SHAPE_OL    = u'\u2ffb'         # ⿻    Overlaid
 
 ###############################################################################
 def header_row(ws):
+    # type (Worksheet) -> Tuple
     """
     Returns the header row of a citation worksheet, which contains names of the
     columns.
@@ -131,7 +133,7 @@ def header_row(ws):
 
 ###############################################################################
 def column_mappings(ws):
-    # type (Worksheet) -> dict
+    # type (Worksheet) -> Dict
     """
     Returns the mappings between a worksheet's column names and letters.
     The mappings are cached for reuse the first time the function is called.
@@ -180,12 +182,14 @@ def find_closest_value(ws,
     # type: (Worksheet, str, int) -> (str, int)
     """
     Finds the first non-empty value that appears in the given column, at or
-    above the specified row and TODO: describe the ordinal return value.
+    above the specified row and the row's rank among those sharing that value,
+    e.g. if row == 5, and the nearest non-empty value is in row 2, rank = 4
 
     :param  ws:         The worksheet
     :param  col_letter: Column letter
     :param  row:        Row number (1-based)
-    :returns: The 
+    :returns: The value for a given column and row, and the row's rank among
+              those sharing a value for that column.
     """
 
     # Identify non-empty cells at or above the specified row
@@ -206,12 +210,12 @@ def get_def_name_id_and_label(ws, cell):
     Returns the defined name and a label for referring to a specified cell that
     is part of book citation.
     The defined name is built from the chapter name (i.e. worksheet title),
-    page number, line number of the citation, plus its order amongst all
-    citations for that chapter/page/line number.
+    page number, line number of the citation, plus its rank amongst citations
+    for that chapter/page/line number combination.
 
-    :param  ws:  The worksheet
-    :param  cell: A cell in the worksheet
-    :returns:
+    :param  ws:     The worksheet
+    :param  cell:   A cell in the worksheet
+    :returns: The defined name and label for referring to the cell.
     """
     id = label = None
 
@@ -230,7 +234,7 @@ def get_def_name_id_and_label(ws, cell):
                         line_number, DEF_NAME_ID_SEP, ref_number)
         label =  '{}{}{}{}{}'.format(
                             chap_name, REF_LABEL_SEP,
-                            page_number, REF_LABEL_SEP, line_number) 
+                            page_number, REF_LABEL_SEP, line_number)
 
     return id, label
 ###############################################################################
@@ -244,18 +248,18 @@ def get_refs_for_ws_phrases(wb,
     # type: (Workbook, str, bool, bool) -> None
     """
     Fills in the references for the phrase column in a worksheet containing
-    citations of a single chapter.
+    citations.
     This requires building a reference to the first occurrence of each phrase
     in a previous chapter worksheet.
 
-    :param  wb:         The workbook
-    :param  ws:         The chapter worksheet name
+    :param  wb:         A citation workbook
+    :param  ws_name:    A citation name
     :param  overwrite   If true, overwrite any existing content in referring
                         cells if these don't already refer to the referenced
                         cells
     :param  audit_only  If true, show/print the actions for building references
                         without modifying any data
-    :returns:
+    :returns: Nothing
     """
     if ws_name in CITATION_SHEETS and ws_name in wb.sheetnames:
         chapter_index = CITATION_SHEETS.index(ws_name)
@@ -270,7 +274,7 @@ def get_refs_for_ws_phrases(wb,
             referenced_cells = find_matches(wb, COL_HDR_PHRASE, [phrase_cell.value], False, CellType.CT_DEFN, 1)
             referenced_cell = referenced_cells[0] if len(referenced_cells) > 0 else None
 
-            if referenced_cell and not referenced_cell == phrase_cell: 
+            if referenced_cell and not referenced_cell == phrase_cell:
                 #
                 # Ensure this cell isn't the one providing the definition!
                 #
@@ -280,7 +284,7 @@ def get_refs_for_ws_phrases(wb,
                 print("{}!{}{} ({}) --> {}!{}{}".format(
                       ws.title,
                       phrase_cell.column_letter, phrase_cell.row,
-                      phrase_cell.value, 
+                      phrase_cell.value,
                       referenced_chap, referenced_cell.column_letter, referenced_cell.row))
 
                 referring_cell_loc = '{}{}'.format(get_col_id(ws, COL_HDR_DEFN), phrase_cell.row)
@@ -295,8 +299,8 @@ def build_reference(referenced_ws,
                     referenced_cell,
                     referring_ws,
                     referring_cell,
-                    overwrite = False,
-                    audit_only = False):
+                    overwrite       = False,
+                    audit_only      = False):
     # type: (Worksheet, Cell, Worksheet, Cell, bool, bool) -> None
     """
     Builds a reference to one cell in another.
@@ -307,10 +311,10 @@ def build_reference(referenced_ws,
     :param  referenced_cell     The referenced cell
     :param  referring_ws        The referring worksheet
     :param  referring_cell      The referring cell
-    :param  overwrite           If true, overwrite any existing content in the
+    :param  overwrite           If True, overwrite any existing content in the
                                 referring cell (if this isn't already a label
                                 for the referenced cell)
-    :param  audit_only          If true, show/print the actions for building
+    :param  audit_only          If True, show/print the actions for building
                                 the reference, but do not modify the data
     :returns: Nothing
     """
@@ -331,7 +335,7 @@ def build_reference(referenced_ws,
             def_name = DefinedName(name = def_name_id,
                                    attr_text = def_name_destination)
             print("\tCreate defined name: {}: {}".format(def_name_destination,
-                                                       def_name_id))
+                                                         def_name_id))
             if not audit_only:
                 workbook.defined_names.append(def_name)
 
@@ -340,8 +344,8 @@ def build_reference(referenced_ws,
                                        referring_cell.row)
     if write_needed:
         print('\t{}!{} current value = {}'.format(referring_ws.title,
-                                                referring_cell_loc,
-                                                referring_cell.value))
+                                                  referring_cell_loc,
+                                                  referring_cell.value))
         if not audit_only:
             referring_cell.value = label
             referring_cell.hyperlink = Hyperlink(ref = referring_cell_loc,
@@ -361,6 +365,7 @@ def assign_style(cell):
     # type: (Cell) -> None
     """
     Assigns the appropriate style to a citation worksheet cell
+
     :param  cell    The cell to be styled
     :returns: Nothing
     """
@@ -373,6 +378,7 @@ def style_citation_sheet(ws):
     # type: (Cell) -> None
     """
     Assigns the appropriate style to all cells in a citation worksheet
+
     :param  ws  The worksheet
     :returns: Nothing
     """
@@ -410,21 +416,26 @@ def find_matches(wb,
                  do_re_search   = False,
                  cell_type      = CellType.CT_ALL,
                  max_instances  = -1):
-    # type: (Workbook, str, List[string], bool, CellType, int) -> List[Cell]
+    # type: (Workbook, str, List[str], bool, CellType, int) -> List[Cell]
     """
-    Finds cells matching certain conditions on a given column.
+    Finds cells in a workbook matching conditions on a given column.
 
-    :param  wb:             The workbook
-    :param  col_name:       The name of the column to be searched
-    :param  search_terms:   The search terms to be matched
-    :param  do_re_search:   Whether the search terms should be treated as
-                            regular expressions
-    :param  cell_type:      The type of cells to search for
-    :param: max_instances   The maximum number of matched cells to return
+    :param  wb:             A citation workbook
+    :param  col_name:       Name of the column to be searched
+    :param  search_terms:   Search term/s to be matched, converted to a list if
+                            necessary
+    :param  do_re_search:   If True, treat search terms as regular expressions
+    :param  cell_type:      Type of cells to search for
+    :param  max_instances:  Maximum number of matched cells to return
     :returns: The matching cells
     """
     matching_cells = list()
+    if isinstance(search_terms, str):
+        search_terms = [search_terms]
 
+    #
+    # Perform search over all citation sheets
+    #
     citation_sheets = get_citation_sheets(wb)
     for ws in citation_sheets:
         search_col  = get_col_id(ws, col_name)
@@ -432,7 +443,7 @@ def find_matches(wb,
 
         #
         # Build the list of matches in the worksheet: begin with the cells
-        # that provide a value
+        # that provide any value
         #
         ws_matches = [cell for cell in ws[search_col][1:] if cell.value]
 
@@ -453,6 +464,8 @@ def find_matches(wb,
         elif cell_type == CellType.CT_REFERRING:
            ws_matches = [cell for cell in ws_matches if
                          ws[COL_ID_DEFN][cell.row - 1].style == STYLE_LINK]
+        if (len(ws_matches) != 0):
+            print("ws_matches = {}".format(ws_matches))
 
         #
         # Add matches to return list, respecting the maximum instances limit
@@ -469,6 +482,14 @@ def find_matches(wb,
 ###############################################################################
 def get_col_display_value(cell,
                           col_name):
+    # type: (Cell, str) -> (str, str)
+    """
+    Retrieves the value and trailing delimiter for a given column of a cell.
+
+    :param  cell:           A cell in a citation worksheet
+    :param  col_name:       The name of the column to be displayed
+    :returns: The column value and trailing delimiter.
+    """
     display_value = ''
     display_delim = ''
     if not cell is None:
@@ -494,7 +515,6 @@ def get_col_display_value(cell,
 ###############################################################################
 
 
-
 ###############################################################################
 def show_definition(cell,
                     cols_to_show = [COL_HDR_CATEGORY, COL_HDR_PHRASE,
@@ -504,7 +524,9 @@ def show_definition(cell,
     """
     Displays the definition associated with a cell.
 
-    :param  cell: A cell in a citation worksheet
+    :param  cell:           Cell in a citation worksheet
+    :param  cols_to_show:   Columns that should be displayed
+    :param  show_cell_ref:  If True, prefix the definition with the cell label
     :returns: Nothing
     """
     if not cell is None:
@@ -532,8 +554,19 @@ def display_matches(wb,
                     cols_to_show    = [COL_HDR_CATEGORY, COL_HDR_PHRASE,
                                        COL_HDR_JYUTPING, COL_HDR_DEFN],
                     show_cell_ref   = True):
-    # 
+    # type: (Workbook, List, bool, str, CellType, int, List[str], bool) -> None
     """
+    Displays the matches for one or more search terms in a citations workbook
+
+    :param  wb:             A citation workbook
+    :param  search_terms:   Search term/s to be matched
+    :param  do_re_search:   If True, treat search terms as regular expressions
+    :param  col_name:       Name of the column to be searched
+    :param  cell_type:      Type of cells to search for
+    :param  max_instances:  Maximum number of matched cells to return
+    :param  cols_to_show:   Columns to be displayed
+    :param  show_cell_ref:  If True, prefix each displayed row with the cell label
+    :returns: Nothing
     """
     matches = find_matches(wb, col_name, search_terms, do_re_search, cell_type, max_instances)
     for cell in matches:
@@ -545,9 +578,9 @@ def display_matches(wb,
 def show_definedname_cells(wb):
     # type: (Workbook) -> None
     """
-    Displays the definition of cells that are associated with a defined name.
+    Displays the definition of workbook cells associated with a defined name.
 
-    :param  wb: The workbook
+    :param  wb: A citation workbook
     :returns: Nothing
     """
     defined_name_dict = dict()
@@ -574,8 +607,8 @@ def def_specified(cell):
     """
     Checks if a given cell is associated with a definition.
 
-    :param  cell: The cell
-    :returns Whether the cell matches up with a definition
+    :param  cell:   The cell
+    :returns True if the cell matches up with a definition
     """
     if not cell is None:
         def_loc = '{}{}'.format(get_col_id(cell.parent, COL_HDR_DEFN), cell.row)
@@ -588,13 +621,13 @@ def def_specified(cell):
 def find_cells_with_no_def(ws,
                            min_num_chars = 1,
                            max_num_chars = 1):
-    # type (Worksheet, int, int) -> List
+    # type (Worksheet, int, int) -> List[Cell]
     """
-    Finds cells in a citation worksheet that have no definition
+    Finds phrase cells in a citation worksheet with no associated definition
 
-    :param ws:              The worksheet
-    :param min_num_chars:   The minimum number of characters in the phrase
-    :param max_num_chars:   The maximum number of characters in the phrase,
+    :param ws:              A citation worksheet
+    :param min_num_chars:   Minimum number of characters in the phrase
+    :param max_num_chars:   Maximum number of characters in the phrase,
                             if 0 no upper limit is imposed on the phrase length
     :returns The list of cells with no definition
     """
@@ -609,20 +642,20 @@ def find_cells_with_no_def(ws,
 ###############################################################################
 
 
-
 ###############################################################################
-def find_cells_with_shape_and_value(wb,           # type Workbook
+def find_cells_with_shape_and_value(wb,
                                     shape,
                                     value,
-                                    pos):           # type int
+                                    pos):
+    # type (Workbook, str, str, int) -> List[Cell]
     """
-    Finds cells TODO
+    Finds phrase cells in a citation workbook that fit CJK shape conditions
 
-    :param  wb:     The workbook
-    :param  shape:  The ideographic shape
-    :param  value:  The value to be found in the shape
+    :param  wb:     A citation workbook
+    :param  shape:  Ideographic shape to match
+    :param  value:  Value to match within the shape
     :param
-    :returns: list 
+    :returns: list
     """
     matching_cells = list()
 
@@ -660,16 +693,92 @@ def find_cells_with_shape_and_value(wb,           # type Workbook
     return matching_cells
 ###############################################################################
 
+
+###############################################################################
+def find_matches_for_file(wb,
+                          search_terms_filename,
+                          do_re_search    = False,
+                          col_name        = COL_HDR_PHRASE,
+                          cell_type       = CellType.CT_DEFN,
+                          cols_to_show    = [COL_HDR_CATEGORY, COL_HDR_PHRASE,
+                                             COL_HDR_JYUTPING, COL_HDR_DEFN],
+                          show_cell_ref   = True):
+    # type (Workbook, str, bool, str, CellType, List[str], bool) -> None
+    """
+    Find and display matches in a citation workbook for terms listed in a file
+
+    :param  wb:                     A citation workbook
+    :param  search_terms_filename:  Name of the file containing the terms
+    :param  do_re_search:           If True, treat search terms as regular expressions
+    :param  col_name:               Name of the column to be searched
+    :param  cols_to_show:           Columns to be displayed
+    :param  show_cell_ref:          If True, prefix each displayed row with the
+                                    cell label
+    :returns Nothing
+    """
+    with open(search_terms_filename) as search_terms_file:
+        search_term = search_terms_file.readline()
+        while search_term:
+            if (search_term != '\n'):
+                display_matches(wb,
+                                search_terms    = search_term,
+                                do_re_search    = do_re_search,
+                                col_name        = col_name,
+                                cell_type       = cell_type,
+                                cols_to_show    = cols_to_show,
+                                show_cell_ref   = show_cell_ref)
+            else:
+                print()
+            search_term = search_terms_file.readline()
+
+#       for search_term in search_terms_file:
+#           display_matches(wb,
+#                           search_terms    = search_term,
+#                           do_re_search    = do_re_search,
+#                           col_name        = col_name,
+#                           cell_type       = cell_type,
+#                           cols_to_show    = cols_to_show,
+#                           show_cell_ref   = show_cell_ref)
+
+###############################################################################
+
+
 ###############################################################################
 def get_citation_sheets(wb):
-    # type: (Workbook) -> List
+    # type: (Workbook) -> List[Worksheet]
     """
     Returns a workbook's citation worksheets
 
-    :param  wb: The workbook
-    :returns:   A list of the citation worksheets
+    :param  wb: A citation workbook
+    :returns a list of the citation worksheets
     """
     return [wb.get_sheet_by_name(name) for name in CITATION_SHEETS if name in wb.sheetnames]
+###############################################################################
+
+
+###############################################################################
+def fill_in_sheet(wb,
+                  ws_name):
+    # type: (Workbook) -> None
+    """
+    Fills in a citation worksheet based on existing definitions, then shows
+    phrases that require definitions.
+
+    :param  wb:         A citation workbook
+    :parm   ws_name:    Name of a citation worksheet
+    :returns Nothing
+    """
+    if ws_name in CITATION_SHEETS and ws_name in wb.sheetnames:
+        ws = wb.get_sheet_by_name(ws_name)
+        get_refs_for_ws_phrases(wb, ws_name, True, False)
+
+        missing = find_cells_with_no_def(ws, min_num_chars = 1)
+        for m in missing:
+            print(m.value)
+
+        missing = find_cells_with_no_def(ws, min_num_chars = 2, max_num_chars = 0)
+        for m in missing:
+            print('{} {}'.format(m.row, m.value))
 ###############################################################################
 
 
@@ -677,25 +786,27 @@ def get_citation_sheets(wb):
 def fill_in_last_sheet(wb):
     # type: (Workbook) -> None
     """
-    Fills in a workbook's latest worksheet based on existing definitions, then
-    shows the phrases that require definitions.
+    Fills in a workbook's latest citation worksheet based on existing
+    definitions, then shows the phrases that require definitions.
 
-    :param  wb: The workbook
-    :returns:   A list of the citation worksheets
+    :param  wb: A citation workbook
+    :returns Nothing
     """
     citation_sheet_names = [c for c in CITATION_SHEETS if c in wb.sheetnames]
-
     last_sheet_name = citation_sheet_names[-1]
-    ws = wb.get_sheet_by_name(last_sheet_name)
-    get_refs_for_ws_phrases(wb, last_sheet_name, True, False)
 
-    missing = find_cells_with_no_def(ws, min_num_chars = 1)
-    for m in missing:
-        print(m.value)
+    fill_in_sheet(wb, last_sheet_name)
 
-    missing = find_cells_with_no_def(ws, min_num_chars = 2, max_num_chars = 0)
-    for m in missing:
-        print('{} {}'.format(m.row, m.value))
+    #ws = wb.get_sheet_by_name(last_sheet_name)
+    #get_refs_for_ws_phrases(wb, last_sheet_name, True, False)
+
+    #missing = find_cells_with_no_def(ws, min_num_chars = 1)
+    #for m in missing:
+        #print(m.value)
+
+    #missing = find_cells_with_no_def(ws, min_num_chars = 2, max_num_chars = 0)
+    #for m in missing:
+        #print('{} {}'.format(m.row, m.value))
 ###############################################################################
 
 
@@ -705,9 +816,9 @@ def save_changes(wb,
     # type: (Workbook, str) -> None
     """
     Saves the workbook to the chosen file
-    :param  wb          The workbook
+    :param  wb          A citation workbook
     :param  filename    The destination filename
-    :returns: Nothing
+    :returns Nothing
     """
     wb.save(filename)
 ###############################################################################
@@ -728,6 +839,10 @@ if __name__ == "__main__":
     main()
     notes_wb = load_workbook(SOURCE_FILE)
 
+#   find_matches_for_file(notes_wb, 'confounds_list',
+#                         cols_to_show = [COL_HDR_PHRASE, COL_HDR_JYUTPING, COL_HDR_DEFN],
+#                         show_cell_ref = False)
+
 #   fill_in_last_sheet(notes_wb)
 #   save_changes(notes_wb)
 
@@ -736,3 +851,4 @@ if __name__ == "__main__":
 #       cells = find_cells_with_shape_and_value(notes_wb, CJK_SHAPE_LTR, '口', 0)
 #       for cell in cells:
 #           show_definition(cell)
+
