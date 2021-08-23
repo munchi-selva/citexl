@@ -15,15 +15,16 @@ import itertools
 import re
 import json
 import sys
+from collections import Counter
 from io import BytesIO
+
 # from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl import load_workbook
 from openpyxl.worksheet.hyperlink import Hyperlink
 from openpyxl.workbook.defined_name import DefinedName
+
 from os import path
 from enum import IntEnum
-#from typing import Dict, List
-#import future
 
 import sys
 if sys.version_info.major == 2:
@@ -516,31 +517,33 @@ def get_col_display_value(cell,
 
 
 ###############################################################################
-def show_definition(cell,
-                    cols_to_show = [COL_HDR_CATEGORY, COL_HDR_PHRASE,
-                                    COL_HDR_JYUTPING, COL_HDR_DEFN],
-                    show_cell_ref = True):
+def get_definition(cell,
+                   cols_to_show = [COL_HDR_CATEGORY, COL_HDR_PHRASE,
+                                   COL_HDR_JYUTPING, COL_HDR_DEFN],
+                   show_cell_ref = True):
     # type: (Cell) -> None
     """
-    Displays the definition associated with a cell.
+    Retrieves the definition associated with a cell.
 
     :param  cell:           Cell in a citation worksheet
     :param  cols_to_show:   Columns that should be displayed
     :param  show_cell_ref:  If True, prefix the definition with the cell label
-    :returns: Nothing
+    :returns the definition as a formatted string
     """
+    formatted_defn = None
     if not cell is None:
         ws  = cell.parent
         row = cell.row
         _, cell_label = get_def_name_id_and_label(ws, cell)
 
-        def_line = ''
+        formatted_defn = ''
         if show_cell_ref:
-            def_line += '[{}!{}/{}]\t'.format(ws.title, row, cell_label)
+            formatted_defn += '[{}!{}]\t'.format(cell_label, row)
         for col_to_show in cols_to_show:
             col_display_value, delim = get_col_display_value(cell, col_to_show)
-            def_line += '{}{}'.format(col_display_value, delim)
-        print(def_line)
+            formatted_defn += '{}{}'.format(col_display_value, delim)
+
+    return formatted_defn
 ###############################################################################
 
 
@@ -570,7 +573,7 @@ def display_matches(wb,
     """
     matches = find_matches(wb, col_name, search_terms, do_re_search, cell_type, max_instances)
     for cell in matches:
-        show_definition(cell, cols_to_show, show_cell_ref)
+        print(get_definition(cell, cols_to_show, show_cell_ref))
 ###############################################################################
 
 
@@ -597,7 +600,7 @@ def show_definedname_cells(wb):
     for cs_name in cs_names:
         ws = wb.get_sheet_by_name(cs_name)
         for cell_loc in defined_name_dict[cs_name]:
-            show_definition(ws[cell_loc])
+            print(get_definition(ws[cell_loc]))
 ###############################################################################
 
 
@@ -639,6 +642,52 @@ def find_cells_with_no_def(ws,
     phrase_rows = [cell.row for cell in phrase_cells]
     def_cells = [cell.row for cell in ws[get_col_id(ws, COL_HDR_DEFN)] if cell.row in phrase_rows and not cell.value]
     return [cell for cell in phrase_cells if cell.row in def_cells]
+###############################################################################
+
+
+###############################################################################
+def find_link_names(ws):
+    # type (Worksheet) -> List[str]
+    """
+    Finds the locations referred to by cells in a citation worksheet
+
+    :param ws:  A citation worksheet
+    :returns the list of defined names used as links in the worksheet
+    """
+    references = [c.hyperlink.location for c in ws[get_col_id(ws, COL_HDR_DEFN)] if c.hyperlink and c.hyperlink.location]
+    return references
+###############################################################################
+
+
+###############################################################################
+def show_multiply_used_defns(wb):
+    # type (Workbook) -> None
+    """
+    Shows the definition of phrases that are recorded multiple times in a
+    citation workbook.
+
+    :param wb:  A citation workbook
+    :returns Nothing
+    """
+
+    #
+    # Build the list of link names across all citation worksheets
+    #
+    link_names = list()
+    citation_sheets = get_citation_sheets(wb)
+    for ws in citation_sheets:
+        link_names.extend(find_link_names(ws))
+
+    #
+    # Generate a ranked mapping between link names and number of occurrences
+    #
+    link_names_counter = Counter(link_names).most_common()
+    for link_name, ref_count in link_names_counter:
+        #print (ref_count, link_name)
+        defined_name = notes_wb.defined_names.get(link_name)
+        ws_name, cell_loc = defined_name.attr_text.split('!')
+        ws = wb.get_sheet_by_name(ws_name)
+        print("({}) {}".format(ref_count + 1, get_definition(ws[cell_loc])))
 ###############################################################################
 
 
@@ -850,5 +899,4 @@ if __name__ == "__main__":
 #       cjk = characterlookup.CharacterLookup('T')
 #       cells = find_cells_with_shape_and_value(notes_wb, CJK_SHAPE_LTR, '口', 0)
 #       for cell in cells:
-#           show_definition(cell)
-
+#           print(get_definition(cell))
