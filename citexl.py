@@ -648,17 +648,41 @@ def find_cells_with_no_def(ws,
 
 
 ###############################################################################
-def find_link_names(ws):
+def get_links(ws):
     # type (Worksheet) -> List[str]
     """
-    Finds the locations (defined names) referred to by citation worksheet
-    definitions
+    Finds links (potentially defined names in other worksheets) in citation
+    worksheet definitions
 
     :param ws:  A citation worksheet
-    :returns the list of defined names used as links in the worksheet
+    :returns the list of link targets in the worksheet
     """
-    references = [c.hyperlink.location for c in ws[get_col_id(ws, COL_HDR_DEFN)] if c.hyperlink and c.hyperlink.location]
-    return references
+    links = [c.hyperlink.location for c in ws[get_col_id(ws, COL_HDR_DEFN)] if c.hyperlink and c.hyperlink.location]
+    return links
+###############################################################################
+
+
+###############################################################################
+def get_link_counts(wb):
+    # type (Workbook) -> Counter
+    """
+
+    :param wb:  A citation workbook
+    :returns a Counter, mapping links to number of occurrences
+    """
+
+    #
+    # Build the list of links across all citation worksheets
+    #
+    links = list()
+    citation_sheets = get_citation_sheets(wb)
+    for ws in citation_sheets:
+        links.extend(get_links(ws))
+
+    #
+    # Return the mapping between links and occurrences
+    #
+    return Counter(links)
 ###############################################################################
 
 
@@ -674,18 +698,11 @@ def show_multiply_used_defns(wb):
     """
 
     #
-    # Build the list of link names across all citation worksheets
+    # Retrieve mapping between links and occurrences and traverse it in
+    # descending number of occurrences.
     #
-    link_names = list()
-    citation_sheets = get_citation_sheets(wb)
-    for ws in citation_sheets:
-        link_names.extend(find_link_names(ws))
-
-    #
-    # Generate a ranked mapping between link names and number of occurrences
-    #
-    link_names_counter = Counter(link_names).most_common()
-    for link_name, ref_count in link_names_counter:
+    link_counter = get_link_counts(wb)
+    for link_name, ref_count in link_counter.most_common():
         defined_name = notes_wb.defined_names.get(link_name)
         ws_name, cell_loc = defined_name.attr_text.split('!')
         ws = wb.get_sheet_by_name(ws_name)
@@ -707,6 +724,7 @@ def show_char_decomposition(c):
         print(dec[0])
 
 ###############################################################################
+
 
 ###############################################################################
 def find_cells_with_shape_and_value(wb,
@@ -782,6 +800,13 @@ def find_matches_for_file(wb,
                                     cell label
     :returns Nothing
     """
+
+    #
+    # Retrieve a mapping between links and occurrences, for use in the
+    # output...
+    #
+    link_counter = get_link_counts(wb)
+
     with open(search_terms_filename) as search_terms_file:
         search_term = search_terms_file.readline()
         while search_term:
@@ -798,23 +823,17 @@ def find_matches_for_file(wb,
                                            cell_type        = cell_type,
                                            max_instances    = 1)
                     if len(matches) == 1:
-                        definition = get_definition(matches[0],
+                        match = matches[0]
+                        cell_name, _ = get_def_name_id_and_label(match.parent,
+                                                                 match)
+                        occurrences = link_counter[cell_name] + 1
+                        definition = get_definition(match,
                                                     cols_to_show  = cols_to_show,
                                                     show_cell_ref = show_cell_ref)
-                        print("\t{}".format(definition))
+                        print("\t({}) {}".format(occurrences, definition))
             else:
                 print()
             search_term = search_terms_file.readline()
-
-#       for search_term in search_terms_file:
-#           display_matches(wb,
-#                           search_terms    = search_term,
-#                           do_re_search    = do_re_search,
-#                           col_name        = col_name,
-#                           cell_type       = cell_type,
-#                           cols_to_show    = cols_to_show,
-#                           show_cell_ref   = show_cell_ref)
-
 ###############################################################################
 
 
@@ -871,17 +890,6 @@ def fill_in_last_sheet(wb):
     last_sheet_name = citation_sheet_names[-1]
 
     fill_in_sheet(wb, last_sheet_name)
-
-    #ws = wb.get_sheet_by_name(last_sheet_name)
-    #get_refs_for_ws_phrases(wb, last_sheet_name, True, False)
-
-    #missing = find_cells_with_no_def(ws, min_num_chars = 1)
-    #for m in missing:
-        #print(m.value)
-
-    #missing = find_cells_with_no_def(ws, min_num_chars = 2, max_num_chars = 0)
-    #for m in missing:
-        #print('{} {}'.format(m.row, m.value))
 ###############################################################################
 
 
