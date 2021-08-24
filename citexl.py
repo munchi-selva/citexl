@@ -18,13 +18,12 @@ import sys
 from collections import Counter
 from io import BytesIO
 
-# from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl import load_workbook
 from openpyxl.worksheet.hyperlink import Hyperlink
 from openpyxl.workbook.defined_name import DefinedName
 
 from os import path
-from enum import IntEnum
+from enum import IntEnum    # Backported to python 2.7 by https://pypi.org/project/enum34
 
 import sys
 if sys.version_info.major == 2:
@@ -117,6 +116,11 @@ CJK_SHAPE_SUL   = u'\u2ff8'         # ⿸    Surround from upper left
 CJK_SHAPE_SUR   = u'\u2ff9'         # ⿹    Surround from upper right
 CJK_SHAPE_SLL   = u'\u2ffa'         # ⿺    Surround from lower left
 CJK_SHAPE_OL    = u'\u2ffb'         # ⿻    Overlaid
+
+#################################################
+#
+#################################################
+FILE_TERMS_GROUP = "GRP:"
 
 ###############################################################################
 def header_row(ws):
@@ -465,8 +469,6 @@ def find_matches(wb,
         elif cell_type == CellType.CT_REFERRING:
            ws_matches = [cell for cell in ws_matches if
                          ws[COL_ID_DEFN][cell.row - 1].style == STYLE_LINK]
-        if (len(ws_matches) != 0):
-            print("ws_matches = {}".format(ws_matches))
 
         #
         # Add matches to return list, respecting the maximum instances limit
@@ -649,7 +651,8 @@ def find_cells_with_no_def(ws,
 def find_link_names(ws):
     # type (Worksheet) -> List[str]
     """
-    Finds the locations referred to by cells in a citation worksheet
+    Finds the locations (defined names) referred to by citation worksheet
+    definitions
 
     :param ws:  A citation worksheet
     :returns the list of defined names used as links in the worksheet
@@ -683,13 +686,27 @@ def show_multiply_used_defns(wb):
     #
     link_names_counter = Counter(link_names).most_common()
     for link_name, ref_count in link_names_counter:
-        #print (ref_count, link_name)
         defined_name = notes_wb.defined_names.get(link_name)
         ws_name, cell_loc = defined_name.attr_text.split('!')
         ws = wb.get_sheet_by_name(ws_name)
         print("({}) {}".format(ref_count + 1, get_definition(ws[cell_loc])))
 ###############################################################################
 
+
+###############################################################################
+def show_char_decomposition(c):
+    # type (char) -> Nothing
+    """
+    Shows the CJK shape decomposition of a character
+
+    :param  c:  A character
+    """
+    cjk = characterlookup.CharacterLookup('T')
+    dec = cjk.getDecompositionEntries(c)
+    if len(dec) > 0:
+        print(dec[0])
+
+###############################################################################
 
 ###############################################################################
 def find_cells_with_shape_and_value(wb,
@@ -769,13 +786,22 @@ def find_matches_for_file(wb,
         search_term = search_terms_file.readline()
         while search_term:
             if (search_term != '\n'):
-                display_matches(wb,
-                                search_terms    = search_term,
-                                do_re_search    = do_re_search,
-                                col_name        = col_name,
-                                cell_type       = cell_type,
-                                cols_to_show    = cols_to_show,
-                                show_cell_ref   = show_cell_ref)
+                search_term = re.sub('\n$', '', search_term)
+                if re.match('^' + FILE_TERMS_GROUP, search_term):
+                    group_name = re.sub('^' + FILE_TERMS_GROUP + '\s+', '', search_term)
+                    print(group_name)
+                else:
+                    matches = find_matches(wb,
+                                           col_name,
+                                           search_term,
+                                           do_re_search     = do_re_search,
+                                           cell_type        = cell_type,
+                                           max_instances    = 1)
+                    if len(matches) == 1:
+                        definition = get_definition(matches[0],
+                                                    cols_to_show  = cols_to_show,
+                                                    show_cell_ref = show_cell_ref)
+                        print("\t{}".format(definition))
             else:
                 print()
             search_term = search_terms_file.readline()
@@ -895,7 +921,8 @@ if __name__ == "__main__":
 #   fill_in_last_sheet(notes_wb)
 #   save_changes(notes_wb)
 
-#   if  sys.version_info.major ==  2:
+    if  sys.version_info.major ==  2:
+        show_char_decomposition('彆')
 #       cjk = characterlookup.CharacterLookup('T')
 #       cells = find_cells_with_shape_and_value(notes_wb, CJK_SHAPE_LTR, '口', 0)
 #       for cell in cells:
