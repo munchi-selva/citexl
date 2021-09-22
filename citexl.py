@@ -29,6 +29,8 @@ import sys
 if sys.version_info.major == 2:
     from cjklib import characterlookup
 
+import ccdict
+
 #
 # Temporary hack, a copy of .pythonrc config to enable autocomplete when
 # running interactively
@@ -104,7 +106,7 @@ REF_LABEL_SEP   = ';'
 #################################################
 # Chinese character shape decomposition constants
 #################################################
-CJK_SHAPE_LTR   = '\u2ff0'         # ⿰    Left to right
+CJK_SHAPE_LTR   = u'\u2ff0'         # ⿰    Left to right
 CJK_SHAPE_ATB   = u'\u2ff1'         # ⿱    Above to below
 CJK_SHAPE_LMR   = u'\u2ff2'         # ⿲    Left to middle and right
 CJK_SHAPE_AMB   = u'\u2ff3'         # ⿳    Above to middle and below
@@ -172,7 +174,7 @@ def get_col_id(ws, col_name):
     specified worksheet.
 
     :param ws:          The worksheet
-    :param col_name:i   The column name
+    :param col_name:    The column name
     :returns:   The column's letter
     """
     return column_mappings(ws)[col_name]
@@ -259,10 +261,10 @@ def get_refs_for_ws_phrases(wb,
 
     :param  wb:         A citation workbook
     :param  ws_name:    A citation name
-    :param  overwrite   If true, overwrite any existing content in referring
+    :param  overwrite   If True, overwrite any existing content in referring
                         cells if these don't already refer to the referenced
                         cells
-    :param  audit_only  If true, show/print the actions for building references
+    :param  audit_only  If True, show/print the actions for building references
                         without modifying any data
     :returns: Nothing
     """
@@ -391,6 +393,7 @@ def style_citation_sheet(ws):
         for cell in row:
             assign_style(cell)
 ###############################################################################
+
 
 ###############################################################################
 def style_workbook(wb):
@@ -719,9 +722,9 @@ def show_char_decomposition(c):
     :param  c:  A character
     """
     cjk = characterlookup.CharacterLookup('T')
-    dec = cjk.getDecompositionEntries(c)
-    if len(dec) > 0:
-        print(dec[0])
+    decs = cjk.getDecompositionEntries(c)
+    for dec in decs:
+        print(dec)
 
 ###############################################################################
 
@@ -851,6 +854,71 @@ def get_citation_sheets(wb):
 
 
 ###############################################################################
+def fill_cell_defn(phrase_cell,
+                   overwrite = False,
+                   audit_only = False):
+    # type: (Cell, bool, bool) -> bool
+    """
+    Fills in the definition (including Jyutping transcription) associated with
+    a given phrase cell.
+
+    :param  phrase_cell:    A phrase cell
+    :param  overwrite:      If True, overwrites existing definition information
+    :param  audit_only:     If True, print the definition data without
+                            modifying the citation worksheet
+    :returns True if definition data was found
+    """
+    ws = phrase_cell.parent
+
+    COL_ID_DEFN     = get_col_id(ws, COL_HDR_DEFN)
+    COL_ID_JYUTPING = get_col_id(ws, COL_HDR_JYUTPING)
+
+    INTRA_DEF_SEP   = ", "
+    INTER_DEF_SEP   = ";\n"
+
+    jsonDecoder = json.JSONDecoder()
+
+    #
+    # Each search result bundles up a list of English definitions and
+    # Jyutping transcriptions corresponding to the phrase
+    #
+    dict_search_res = ccdict.search(phrase_cell.value)
+    defn_vals = list()
+    jyutping_vals = list()
+    for search_res in dict_search_res:
+        #
+        # Generate English and Jyutping strings
+        #
+        defn_list = jsonDecoder.decode(search_res[ccdict.DE_ENGLISH])
+        defn_list = list(filter(None, defn_list))
+        if len(defn_list) != 0:
+            defn_vals.append(INTRA_DEF_SEP.join(defn_list))
+        jyutping_list = jsonDecoder.decode(search_res[ccdict.DE_JYUTPING])
+        jyutping_list = list(filter(None, jyutping_list))
+        if len(jyutping_list) == 0:
+            jyutping_list.append("?")
+        jyutping_vals.append(INTRA_DEF_SEP.join(jyutping_list))
+
+    jyut_cell = ws["{}{}".format(COL_ID_JYUTPING, phrase_cell.row)]
+    defn_cell = ws["{}{}".format(COL_ID_DEFN, phrase_cell.row)]
+
+    print("{}:\t{}".format(phrase_cell.row, phrase_cell.value))
+    print(INTER_DEF_SEP.join(["\t{}".format(jyutping) for jyutping in jyutping_vals]))
+    print(INTER_DEF_SEP.join(["\t{}".format(defn) for defn in defn_vals]))
+
+    if not audit_only:
+        if not jyut_cell.value or overwrite:
+            jyut_cell.value = INTER_DEF_SEP.join(jyutping_vals)
+            assign_style(jyut_cell)
+        if not defn_cell.value or overwrite:
+            defn_cell.value = INTER_DEF_SEP.join(defn_vals)
+            assign_style(defn_cell)
+
+    return len(defn_vals) > 0 or len(jyutping_vals) > 0
+###############################################################################
+
+
+###############################################################################
 def fill_in_sheet(wb,
                   ws_name):
     # type: (Workbook) -> None
@@ -866,13 +934,28 @@ def fill_in_sheet(wb,
         ws = wb.get_sheet_by_name(ws_name)
         get_refs_for_ws_phrases(wb, ws_name, True, False)
 
+        no_def_found = list()
+
+        #
+        # Attempt to fill in definitions/Jyutping for single character phrases
+        #
         missing = find_cells_with_no_def(ws, min_num_chars = 1)
         for m in missing:
-            print(m.value)
+            #
+            # Each search result bundles up a list of Jyutping values and
+            # English definitions corresponding to the phrase
+            #
+            if not fill_cell_defn(m):
+                no_def_found.append(m)
 
         missing = find_cells_with_no_def(ws, min_num_chars = 2, max_num_chars = 0)
         for m in missing:
-            print('{} {}'.format(m.row, m.value))
+            if not fill_cell_defn(m):
+                no_def_found.append(m)
+
+        print("Definition still required...")
+        for m in no_def_found:
+            print("{}:\t{}".format(m.row, m.value))
 ###############################################################################
 
 
@@ -926,6 +1009,7 @@ if __name__ == "__main__":
 #                         cols_to_show = [COL_HDR_PHRASE, COL_HDR_JYUTPING, COL_HDR_DEFN],
 #                         show_cell_ref = False)
 
+#   fill_in_sheet(notes_wb, '三十九')
 #   fill_in_last_sheet(notes_wb)
 #   save_changes(notes_wb)
 
