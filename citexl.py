@@ -283,7 +283,7 @@ def get_refs_for_ws_phrases(wb,
             #
             referenced_rows = find_matches(wb, COL_HDR_PHRASE, [phrase_cell.value], False, CellType.CT_DEFN, 1)
             referenced_row = referenced_rows[0] if len(referenced_rows) > 0 else None
-            referenced_cell = referenced_row[COL_HDR_DEFN] if referenced_row else None
+            referenced_cell = referenced_row[COL_HDR_PHRASE] if referenced_row else None
 
             if referenced_cell and not referenced_cell == phrase_cell:
                 #
@@ -1163,8 +1163,9 @@ if __name__ == "__main__":
 #   find_matches_for_file(notes_wb, 'confounds_list',
 #                         cols_to_show = [COL_HDR_PHRASE, COL_HDR_JYUTPING, COL_HDR_DEFN],
 #                         show_cell_ref = False)
-    ws = notes_wb.get_sheet_by_name("四十")
 
+#   ws = notes_wb.get_sheet_by_name("一")
+#   fill_in_sheet(notes_wb, "一")
 #   fill_in_last_sheet(notes_wb)
 #   save_changes(notes_wb)
 
