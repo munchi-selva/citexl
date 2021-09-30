@@ -946,6 +946,9 @@ def fill_defn(citation_row,
     :returns True if definition data was found
     """
 
+    #
+    # Check for the existence of a valid phrase cell before proceeding
+    #
     phrase_cell = citation_row[COL_HDR_PHRASE]
     if not phrase_cell or not phrase_cell.value:
         return False
@@ -956,9 +959,6 @@ def fill_defn(citation_row,
     ws          = phrase_cell.parent
     row_number  = phrase_cell.row
 
-    COL_ID_DEFN     = get_col_id(ws, COL_HDR_DEFN)
-    COL_ID_JYUTPING = get_col_id(ws, COL_HDR_JYUTPING)
-
     INTRA_DEF_SEP   = ", "
     INTER_DEF_SEP   = ";\n"
 
@@ -985,73 +985,8 @@ def fill_defn(citation_row,
             jyutping_list.append("?")
         jyutping_vals.append(INTRA_DEF_SEP.join(jyutping_list))
 
-    jyut_cell = ws["{}{}".format(COL_ID_JYUTPING, row_number)]
-    defn_cell = ws["{}{}".format(COL_ID_DEFN, row_number)]
-
-    print("{}:\t{}".format(phrase_cell.row, phrase_cell.value))
-    print(INTER_DEF_SEP.join(["\t{}".format(jyutping) for jyutping in jyutping_vals]))
-    print(INTER_DEF_SEP.join(["\t{}".format(defn) for defn in defn_vals]))
-
-    if not audit_only:
-        if not jyut_cell.value or overwrite:
-            jyut_cell.value = INTER_DEF_SEP.join(jyutping_vals)
-            assign_style(jyut_cell)
-        if not defn_cell.value or overwrite:
-            defn_cell.value = INTER_DEF_SEP.join(defn_vals)
-            assign_style(defn_cell)
-
-    return len(defn_vals) > 0 or len(jyutping_vals) > 0
-###############################################################################
-
-
-###############################################################################
-def fill_cell_defn(phrase_cell,
-                   overwrite = False,
-                   audit_only = False):
-    # type: (Cell, bool, bool) -> bool
-    """
-    Fills in the definition (including Jyutping transcription) associated with
-    a given phrase cell.
-
-    :param  phrase_cell:    A phrase cell
-    :param  overwrite:      If True, overwrites existing definition information
-    :param  audit_only:     If True, print the definition data without
-                            modifying the citation worksheet
-    :returns True if definition data was found
-    """
-    ws = phrase_cell.parent
-
-    COL_ID_DEFN     = get_col_id(ws, COL_HDR_DEFN)
-    COL_ID_JYUTPING = get_col_id(ws, COL_HDR_JYUTPING)
-
-    INTRA_DEF_SEP   = ", "
-    INTER_DEF_SEP   = ";\n"
-
-    jsonDecoder = json.JSONDecoder()
-
-    #
-    # Each search result bundles up a list of English definitions and
-    # Jyutping transcriptions corresponding to the phrase
-    #
-    dict_search_res = ccdict.search(phrase_cell.value)
-    defn_vals = list()
-    jyutping_vals = list()
-    for search_res in dict_search_res:
-        #
-        # Generate English and Jyutping strings
-        #
-        defn_list = jsonDecoder.decode(search_res[ccdict.DE_ENGLISH])
-        defn_list = list(filter(None, defn_list))
-        if len(defn_list) != 0:
-            defn_vals.append(INTRA_DEF_SEP.join(defn_list))
-        jyutping_list = jsonDecoder.decode(search_res[ccdict.DE_JYUTPING])
-        jyutping_list = list(filter(None, jyutping_list))
-        if len(jyutping_list) == 0:
-            jyutping_list.append("?")
-        jyutping_vals.append(INTRA_DEF_SEP.join(jyutping_list))
-
-    jyut_cell = ws["{}{}".format(COL_ID_JYUTPING, phrase_cell.row)]
-    defn_cell = ws["{}{}".format(COL_ID_DEFN, phrase_cell.row)]
+    jyut_cell = citation_row[COL_HDR_JYUTPING]
+    defn_cell = citation_row[COL_HDR_DEFN]
 
     print("{}:\t{}".format(phrase_cell.row, phrase_cell.value))
     print(INTER_DEF_SEP.join(["\t{}".format(jyutping) for jyutping in jyutping_vals]))
@@ -1075,8 +1010,10 @@ def fill_in_sheet(wb,
                   overwrite = False):
     # type: (Workbook) -> None
     """
-    Fills in a citation worksheet based on existing definitions, then shows
-    phrases that require definitions.
+    Fills in a citation worksheet by:
+        1. Building links to prior citations that define the same phrase
+        2. Performing a dictionary lookup for first occurrences of phrases
+        3. Displaying cited phrases that still require a definitions after 1/2.
 
     :param  wb:         A citation workbook
     :parm   ws_name:    Name of a citation worksheet
@@ -1088,7 +1025,6 @@ def fill_in_sheet(wb,
         ws = wb.get_sheet_by_name(ws_name)
         get_refs_for_ws_phrases(wb, ws_name, overwrite, False)
 
-        no_def_found = list()
         citations_with_no_def = list()
 
         #
@@ -1170,8 +1106,8 @@ if __name__ == "__main__":
 #                         cols_to_show = [COL_HDR_PHRASE, COL_HDR_JYUTPING, COL_HDR_DEFN],
 #                         show_cell_ref = False)
 
-    ws = notes_wb.get_sheet_by_name("一")
-    fill_in_sheet(notes_wb, "一", True)
+#   for sheet_name in CITATION_SHEETS:
+#       fill_in_sheet(notes_wb, sheet_name, True)
 #   fill_in_last_sheet(notes_wb)
 #   save_changes(notes_wb)
 
