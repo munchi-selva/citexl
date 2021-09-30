@@ -264,12 +264,12 @@ def get_refs_for_ws_phrases(wb,
 
     :param  wb:         A citation workbook
     :param  ws_name:    A citation name
-    :param  overwrite   If True, overwrite any existing content in referring
+    :param  overwrite:  If True, overwrite any existing content in referring
                         cells if these don't already refer to the referenced
                         cells
-    :param  audit_only  If True, show/print the actions for building references
+    :param  audit_only: If True, show/print the actions for building references
                         without modifying any data
-    :returns: Nothing
+    :returns Nothing
     """
     if ws_name in CITATION_SHEETS and ws_name in wb.sheetnames:
         chapter_index = CITATION_SHEETS.index(ws_name)
@@ -422,6 +422,19 @@ def column_values(wb, ws_name, col_letter):
 
 
 ###############################################################################
+def get_citation_sheets(wb):
+    # type: (Workbook) -> List[Worksheet]
+    """
+    Returns a workbook's citation worksheets
+
+    :param  wb: A citation workbook
+    :returns a list of the citation worksheets
+    """
+    return [wb.get_sheet_by_name(name) for name in CITATION_SHEETS if name in wb.sheetnames]
+###############################################################################
+
+
+###############################################################################
 def get_row(ws,
             row):
     # type: (Worksheet, int) -> Dict
@@ -441,14 +454,74 @@ def get_row(ws,
 def find_matches(wb,
                  col_name,
                  search_terms,
-                 do_re_search   = False,
-                 cell_type      = CellType.CT_ALL,
-                 max_instances  = -1):
+                 do_re_search       = False,
+                 cell_type          = CellType.CT_ALL,
+                 max_instances      = -1):
     # type: (Workbook, str, List[str], bool, CellType, int) -> List[Dict]
     """
     Finds citation rows matching conditions on a given column.
 
     :param  wb:             A citation workbook
+    :param  col_name:       Name of the column to be searched
+    :param  search_terms:   Search term/s to be matched
+    :param  do_re_search:   If True, treat search terms as regular expressions
+    :param  cell_type:      Type of cells to search for
+    :param  max_instances:  Maximum number of matched citations to return
+    :returns a list of column name to Cell mappings for the matching rows.
+    """
+
+    #
+    # Initialise match list
+    #
+    matching_rows = list()
+
+    #
+    # Perform search over all citation sheets
+    #
+    citation_sheets = get_citation_sheets(wb)
+    max_ws_instances = max_instances
+    for ws in citation_sheets:
+        #
+        # Check whether the maximum instances limit has been reached
+        #
+        if max_ws_instances == 0:
+            break
+
+        #
+        # Find matches in the latest worksheet
+        #
+        ws_matches = find_matches_in_sheet(ws,
+                                           col_name,
+                                           search_terms,
+                                           do_re_search,
+                                           cell_type,
+                                           max_ws_instances)
+
+        if len(ws_matches) > 0:
+            #
+            # Add matches to return list and update the next worksheet's limit
+            #
+            matching_rows += ws_matches
+
+            if max_instances > 0:
+                max_ws_instances -= len(ws_matches)
+
+    return matching_rows
+###############################################################################
+
+
+###############################################################################
+def find_matches_in_sheet(ws,
+                          col_name,
+                          search_terms,
+                          do_re_search       = False,
+                          cell_type          = CellType.CT_ALL,
+                          max_instances      = -1):
+    # type: (Workbook, str, List[str], bool, CellType, int) -> List[Dict]
+    """
+    Finds citation rows matching conditions on a given column.
+
+    :param  wb:             A citation worksheet
     :param  col_name:       Name of the column to be searched
     :param  search_terms:   Search term/s to be matched, converted to a list if
                             necessary
@@ -465,50 +538,39 @@ def find_matches(wb,
         search_terms = [search_terms]
 
     #
-    # Initialise match list
+    # Replace the empty string with None to allow searching for blank column values
     #
-    matching_rows = list()
+    search_terms = [search_term if search_term else None for search_term in search_terms]
+
 
     #
-    # Perform search over all citation sheets
+    # Build the list of cells in the worksheet matching the search terms
     #
-    citation_sheets = get_citation_sheets(wb)
-    for ws in citation_sheets:
-        search_col  = get_col_id(ws, col_name)
+    search_col  = get_col_id(ws, col_name)
+    matching_cells = ws[search_col][1:]
+    if do_re_search:
+        matching_cells  = [cell for cell in matching_cells if cell.value and any(re.search(term, cell.value) for term in search_terms)]
+    else:
+        matching_cells  = [cell for cell in matching_cells if cell.value in search_terms]
 
-        #
-        # Build the list of cells in the worksheet matching the search terms:
-        # begin with cells of the given column that provide a value, then
-        # filtering based on the search terms.
-        #
-        matching_cells = [cell for cell in ws[search_col][1:] if cell.value]
-        if do_re_search:
-            matching_cells  = [cell for cell in matching_cells if any(re.search(term, cell.value) for term in search_terms)]
-        else:
-            matching_cells  = [cell for cell in matching_cells if cell.value in search_terms]
+    #
+    # Retrieve the corresponding rows
+    #
+    matching_rows = [get_row(ws, cell.row) for cell in matching_cells]
 
-        #
-        # Retrieve the corresponding rows
-        #
-        ws_matches = [get_row(ws, cell.row) for cell in matching_cells]
+    #
+    # Filter based on cell type
+    #
+    if cell_type == CellType.CT_DEFN:
+        matching_rows = [r for r in matching_rows if r[COL_HDR_DEFN] and r[COL_HDR_DEFN].style == STYLE_GENERAL]
+    elif cell_type == CellType.CT_REFERRING:
+        matching_rows = [r for r in matching_rows if r[COL_HDR_DEFN] and r[COL_HDR_DEFN].style == STYLE_LINK]
 
-        #
-        # Filter based on cell type
-        #
-        if cell_type == CellType.CT_DEFN:
-            ws_matches = [r for r in ws_matches if r[COL_HDR_DEFN] and r[COL_HDR_DEFN].style == STYLE_GENERAL]
-        elif cell_type == CellType.CT_REFERRING:
-            ws_matches = [r for r in ws_matches if r[COL_HDR_DEFN] and r[COL_HDR_DEFN].style == STYLE_LINK]
-
-        if (len(ws_matches) > 0):
-            #
-            # Add matches to return list, respecting the maximum instances limit
-            #
-            rows_to_add = len(ws_matches) if max_instances < 0 else max_instances - len(ws_matches) + 1
-            matching_rows += ws_matches[:rows_to_add]
-
-            if (max_instances > 0 and len(matching_rows) == max_instances):
-                break
+    #
+    # Trim the results list to the maximum instances limit
+    #
+    if (max_instances > 0):
+        matching_rows = matching_rows[:max_instances]
 
     return matching_rows
 ###############################################################################
@@ -604,7 +666,6 @@ def display_matches(wb,
     :returns: Nothing
     """
     matching_rows = find_matches(wb, col_name, search_terms, do_re_search, cell_type, max_instances)
-    pprint(matching_rows)
     for row in matching_rows:
         print(get_formatted_citation(row, cols_to_show, show_cell_ref))
 ###############################################################################
@@ -654,27 +715,28 @@ def def_specified(cell):
 
 
 ###############################################################################
-def find_cells_with_no_def(ws,
-                           min_num_chars = 1,
-                           max_num_chars = 1):
-    # type (Worksheet, int, int) -> List[Cell]
+def find_citations_with_no_def(ws,
+                               min_num_chars = 1,
+                               max_num_chars = 1):
+    # type (Worksheet, int, int) -> List[Dict]
     """
-    Finds phrase cells in a citation worksheet with no associated definition
+    Finds citation rows with no associated definition
 
     :param ws:              A citation worksheet
     :param min_num_chars:   Minimum number of characters in the phrase
     :param max_num_chars:   Maximum number of characters in the phrase,
                             if 0 no upper limit is imposed on the phrase length
-    :returns The list of cells with no definition
+    :returns the list of citation rows with no definition
     """
-    phrase_cells = list()
+    citation_rows = find_matches_in_sheet(ws, COL_HDR_DEFN, '')
     if max_num_chars > 0:
-        phrase_cells = [cell for cell in ws[get_col_id(ws, COL_HDR_PHRASE)] if cell.value and len(cell.value) >= min_num_chars and len(cell.value) <= max_num_chars]
+        citation_rows = [row for row in citation_rows if row[COL_HDR_PHRASE].value and
+                                                         len(row[COL_HDR_PHRASE].value) >= min_num_chars and
+                                                         len(row[COL_HDR_PHRASE].value) <= max_num_chars]
     else:
-        phrase_cells = [cell for cell in ws[get_col_id(ws, COL_HDR_PHRASE)] if cell.value and len(cell.value) >= min_num_chars]
-    phrase_rows = [cell.row for cell in phrase_cells]
-    def_cells = [cell.row for cell in ws[get_col_id(ws, COL_HDR_DEFN)] if cell.row in phrase_rows and not cell.value]
-    return [cell for cell in phrase_cells if cell.row in def_cells]
+        citation_rows = [row for row in citation_rows if row[COL_HDR_PHRASE].value and
+                                                         len(row[COL_HDR_PHRASE].value) >= min_num_chars]
+    return citation_rows
 ###############################################################################
 
 
@@ -869,15 +931,76 @@ def find_matches_for_file(wb,
 
 
 ###############################################################################
-def get_citation_sheets(wb):
-    # type: (Workbook) -> List[Worksheet]
+def fill_defn(citation_row,
+              overwrite = False,
+              audit_only = False):
+    # type: (Dict, bool, bool) -> bool
     """
-    Returns a workbook's citation worksheets
+    Fills in the definition (including Jyutping transcription) of a citation
+    row.
 
-    :param  wb: A citation workbook
-    :returns a list of the citation worksheets
+    :param  citation_row:   A row from a citation worksheet
+    :param  overwrite:      If True, overwrites existing definition information
+    :param  audit_only:     If True, print the definition data without
+                            modifying the citation worksheet
+    :returns True if definition data was found
     """
-    return [wb.get_sheet_by_name(name) for name in CITATION_SHEETS if name in wb.sheetnames]
+
+    phrase_cell = citation_row[COL_HDR_PHRASE]
+    if not phrase_cell or not phrase_cell.value:
+        return False
+
+    #
+    # Retrieve the worksheet and row via the phrase_cell
+    #
+    ws          = phrase_cell.parent
+    row_number  = phrase_cell.row
+
+    COL_ID_DEFN     = get_col_id(ws, COL_HDR_DEFN)
+    COL_ID_JYUTPING = get_col_id(ws, COL_HDR_JYUTPING)
+
+    INTRA_DEF_SEP   = ", "
+    INTER_DEF_SEP   = ";\n"
+
+    jsonDecoder = json.JSONDecoder()
+
+    #
+    # Each search result bundles up a list of English definitions and
+    # Jyutping transcriptions corresponding to the phrase
+    #
+    dict_search_res = ccdict.search(phrase_cell.value)
+    defn_vals = list()
+    jyutping_vals = list()
+    for search_res in dict_search_res:
+        #
+        # Generate English and Jyutping strings
+        #
+        defn_list = jsonDecoder.decode(search_res[ccdict.DE_ENGLISH])
+        defn_list = list(filter(None, defn_list))
+        if len(defn_list) != 0:
+            defn_vals.append(INTRA_DEF_SEP.join(defn_list))
+        jyutping_list = jsonDecoder.decode(search_res[ccdict.DE_JYUTPING])
+        jyutping_list = list(filter(None, jyutping_list))
+        if len(jyutping_list) == 0:
+            jyutping_list.append("?")
+        jyutping_vals.append(INTRA_DEF_SEP.join(jyutping_list))
+
+    jyut_cell = ws["{}{}".format(COL_ID_JYUTPING, row_number)]
+    defn_cell = ws["{}{}".format(COL_ID_DEFN, row_number)]
+
+    print("{}:\t{}".format(phrase_cell.row, phrase_cell.value))
+    print(INTER_DEF_SEP.join(["\t{}".format(jyutping) for jyutping in jyutping_vals]))
+    print(INTER_DEF_SEP.join(["\t{}".format(defn) for defn in defn_vals]))
+
+    if not audit_only:
+        if not jyut_cell.value or overwrite:
+            jyut_cell.value = INTER_DEF_SEP.join(jyutping_vals)
+            assign_style(jyut_cell)
+        if not defn_cell.value or overwrite:
+            defn_cell.value = INTER_DEF_SEP.join(defn_vals)
+            assign_style(defn_cell)
+
+    return len(defn_vals) > 0 or len(jyutping_vals) > 0
 ###############################################################################
 
 
@@ -963,27 +1086,31 @@ def fill_in_sheet(wb,
         get_refs_for_ws_phrases(wb, ws_name, True, False)
 
         no_def_found = list()
+        citations_with_no_def = list()
 
         #
         # Attempt to fill in definitions/Jyutping for single character phrases
         #
-        missing = find_cells_with_no_def(ws, min_num_chars = 1)
-        for m in missing:
-            #
-            # Each search result bundles up a list of Jyutping values and
-            # English definitions corresponding to the phrase
-            #
-            if not fill_cell_defn(m):
-                no_def_found.append(m)
+        citations_to_fill = find_citations_with_no_def(ws)
+        for citation_row in citations_to_fill:
+            if not fill_defn(citation_row):
+                citations_with_no_def.append(citation_row)
 
-        missing = find_cells_with_no_def(ws, min_num_chars = 2, max_num_chars = 0)
-        for m in missing:
-            if not fill_cell_defn(m):
-                no_def_found.append(m)
+        #
+        # Repeat for multi-character phrases
+        #
+        citations_to_fill = find_citations_with_no_def(ws, 2, -1)
+        for citation_row in citations_to_fill:
+            if not fill_defn(citation_row):
+                citations_with_no_def.append(citation_row)
+
 
         print("Definition still required...")
-        for m in no_def_found:
-            print("{}:\t{}".format(m.row, m.value))
+        for citation_row in citations_with_no_def:
+            phrase_cell         = citation_row[COL_HDR_PHRASE]
+            citation_value, _   = find_closest_value(ws, get_col_id(ws, COL_HDR_CITATION), phrase_cell.row)
+            print("{}:\t{}".format(phrase_cell.row, phrase_cell.value))
+            print("\t\t{}".format(citation_value))
 ###############################################################################
 
 
@@ -1036,6 +1163,7 @@ if __name__ == "__main__":
 #   find_matches_for_file(notes_wb, 'confounds_list',
 #                         cols_to_show = [COL_HDR_PHRASE, COL_HDR_JYUTPING, COL_HDR_DEFN],
 #                         show_cell_ref = False)
+    ws = notes_wb.get_sheet_by_name("四十")
 
 #   fill_in_last_sheet(notes_wb)
 #   save_changes(notes_wb)
@@ -1046,3 +1174,4 @@ if __name__ == "__main__":
 #       cells = find_cells_with_shape_and_value(notes_wb, CJK_SHAPE_LTR, '口', 0)
 #       for cell in cells:
 #           print(get_formatted_citation(cell.parent, cell.row))
+
