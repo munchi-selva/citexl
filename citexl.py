@@ -1071,7 +1071,8 @@ def fill_cell_defn(phrase_cell,
 
 ###############################################################################
 def fill_in_sheet(wb,
-                  ws_name):
+                  ws_name,
+                  overwrite = False):
     # type: (Workbook) -> None
     """
     Fills in a citation worksheet based on existing definitions, then shows
@@ -1079,11 +1080,13 @@ def fill_in_sheet(wb,
 
     :param  wb:         A citation workbook
     :parm   ws_name:    Name of a citation worksheet
+    :param  overwrite:  If True, overwrite any existing content in cells to be
+                        filled out
     :returns Nothing
     """
     if ws_name in CITATION_SHEETS and ws_name in wb.sheetnames:
         ws = wb.get_sheet_by_name(ws_name)
-        get_refs_for_ws_phrases(wb, ws_name, True, False)
+        get_refs_for_ws_phrases(wb, ws_name, overwrite, False)
 
         no_def_found = list()
         citations_with_no_def = list()
@@ -1093,7 +1096,7 @@ def fill_in_sheet(wb,
         #
         citations_to_fill = find_citations_with_no_def(ws)
         for citation_row in citations_to_fill:
-            if not fill_defn(citation_row):
+            if not fill_defn(citation_row, overwrite, False):
                 citations_with_no_def.append(citation_row)
 
         #
@@ -1101,7 +1104,7 @@ def fill_in_sheet(wb,
         #
         citations_to_fill = find_citations_with_no_def(ws, 2, -1)
         for citation_row in citations_to_fill:
-            if not fill_defn(citation_row):
+            if not fill_defn(citation_row, overwrite, False):
                 citations_with_no_def.append(citation_row)
 
 
@@ -1115,19 +1118,22 @@ def fill_in_sheet(wb,
 
 
 ###############################################################################
-def fill_in_last_sheet(wb):
+def fill_in_last_sheet(wb,
+                       overwrite = False):
     # type: (Workbook) -> None
     """
     Fills in a workbook's latest citation worksheet based on existing
     definitions, then shows the phrases that require definitions.
 
-    :param  wb: A citation workbook
+    :param  wb:         A citation workbook
+    :param  overwrite:  If True, overwrite any existing content in cells to be
+                        filled out
     :returns Nothing
     """
     citation_sheet_names = [c for c in CITATION_SHEETS if c in wb.sheetnames]
     last_sheet_name = citation_sheet_names[-1]
 
-    fill_in_sheet(wb, last_sheet_name)
+    fill_in_sheet(wb, last_sheet_name, overwrite)
 ###############################################################################
 
 
@@ -1164,8 +1170,8 @@ if __name__ == "__main__":
 #                         cols_to_show = [COL_HDR_PHRASE, COL_HDR_JYUTPING, COL_HDR_DEFN],
 #                         show_cell_ref = False)
 
-#   ws = notes_wb.get_sheet_by_name("一")
-#   fill_in_sheet(notes_wb, "一")
+    ws = notes_wb.get_sheet_by_name("一")
+    fill_in_sheet(notes_wb, "一", True)
 #   fill_in_last_sheet(notes_wb)
 #   save_changes(notes_wb)
 
