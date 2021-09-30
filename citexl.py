@@ -12,8 +12,8 @@ from __future__ import unicode_literals
 # Ensures Unicode string compatibility # in Python 2/3
 import argparse
 import itertools
-import re
 import json
+import re
 import sys
 from collections import Counter
 from io import BytesIO
@@ -25,7 +25,7 @@ from openpyxl.workbook.defined_name import DefinedName
 from os import path
 from enum import IntEnum    # Backported to python 2.7 by https://pypi.org/project/enum34
 
-from pprint import pprint
+from pprint import pprint   # Pretty printing of lists, tuples, etc.
 
 import sys
 if sys.version_info.major == 2:
@@ -281,7 +281,7 @@ def get_refs_for_ws_phrases(wb,
             #
             # Find the first cell to define the phrase
             #
-            referenced_rows = find_matches(wb, COL_HDR_PHRASE, [phrase_cell.value], False, CellType.CT_DEFN, 1)
+            referenced_rows = find_matches(wb, [phrase_cell.value], COL_HDR_PHRASE, False, CellType.CT_DEFN, 1)
             referenced_row = referenced_rows[0] if len(referenced_rows) > 0 else None
             referenced_cell = referenced_row[COL_HDR_PHRASE] if referenced_row else None
 
@@ -452,8 +452,8 @@ def get_row(ws,
 
 ###############################################################################
 def find_matches(wb,
-                 col_name,
                  search_terms,
+                 col_name,
                  do_re_search       = False,
                  cell_type          = CellType.CT_ALL,
                  max_instances      = -1):
@@ -462,8 +462,8 @@ def find_matches(wb,
     Finds citation rows matching conditions on a given column.
 
     :param  wb:             A citation workbook
-    :param  col_name:       Name of the column to be searched
     :param  search_terms:   Search term/s to be matched
+    :param  col_name:       Name of the column to be searched
     :param  do_re_search:   If True, treat search terms as regular expressions
     :param  cell_type:      Type of cells to search for
     :param  max_instances:  Maximum number of matched citations to return
@@ -491,12 +491,11 @@ def find_matches(wb,
         # Find matches in the latest worksheet
         #
         ws_matches = find_matches_in_sheet(ws,
-                                           col_name,
                                            search_terms,
+                                           col_name,
                                            do_re_search,
                                            cell_type,
                                            max_ws_instances)
-
         if len(ws_matches) > 0:
             #
             # Add matches to return list and update the next worksheet's limit
@@ -512,8 +511,8 @@ def find_matches(wb,
 
 ###############################################################################
 def find_matches_in_sheet(ws,
-                          col_name,
                           search_terms,
+                          col_name,
                           do_re_search       = False,
                           cell_type          = CellType.CT_ALL,
                           max_instances      = -1):
@@ -522,9 +521,9 @@ def find_matches_in_sheet(ws,
     Finds citation rows matching conditions on a given column.
 
     :param  wb:             A citation worksheet
-    :param  col_name:       Name of the column to be searched
     :param  search_terms:   Search term/s to be matched, converted to a list if
                             necessary
+    :param  col_name:       Name of the column to be searched
     :param  do_re_search:   If True, treat search terms as regular expressions
     :param  cell_type:      Type of cells to search for
     :param  max_instances:  Maximum number of matched cells to return
@@ -541,7 +540,6 @@ def find_matches_in_sheet(ws,
     # Replace the empty string with None to allow searching for blank column values
     #
     search_terms = [search_term if search_term else None for search_term in search_terms]
-
 
     #
     # Build the list of cells in the worksheet matching the search terms
@@ -587,23 +585,25 @@ def format_cell_value(cell,
     :param  col_name:       The name of the column to be displayed
     :returns the formatted column value and trailing delimiter.
     """
-    display_value = ''
-    display_delim = ''
+    display_value = ""
+    display_delim = ""
     if not cell is None:
         col_value = cell.value
         if col_name == COL_HDR_CITATION:
-            display_value = '"{}"'.format(col_value) if col_value else '-'
+            display_value = "\"{}\"".format(col_value) if col_value else "-"
             display_delim = ' '
         elif col_name == COL_HDR_CATEGORY:
             display_value = '<{}>'.format(col_value if col_value else '-')
             display_delim = ' '
+        elif col_name == COL_HDR_TOPIC:
+            display_value = "[{}]".format(col_value) if col_value else ""
+            display_delim = " "
         elif col_name == COL_HDR_PHRASE or col_name == COL_HDR_DEFN:
             display_value = col_value if col_value else ''
             display_delim = '\t'
         elif col_name == COL_HDR_JYUTPING:
             display_value = '({})'.format(col_value) if col_value else ''
             display_delim = '\t'
-
     return display_value, display_delim
 ###############################################################################
 
@@ -644,8 +644,8 @@ def get_formatted_citation(citation_row,
 ###############################################################################
 def display_matches(wb,
                     search_terms,
-                    do_re_search    = False,
                     col_name        = COL_HDR_PHRASE,
+                    do_re_search    = False,
                     cell_type       = CellType.CT_DEFN,
                     max_instances   = -1,
                     cols_to_show    = [COL_HDR_CATEGORY, COL_HDR_PHRASE,
@@ -665,7 +665,7 @@ def display_matches(wb,
     :param  show_cell_ref:  If True, prefix each displayed row with the cell label
     :returns: Nothing
     """
-    matching_rows = find_matches(wb, col_name, search_terms, do_re_search, cell_type, max_instances)
+    matching_rows = find_matches(wb, search_terms, col_name, do_re_search, cell_type, max_instances)
     for row in matching_rows:
         print(get_formatted_citation(row, cols_to_show, show_cell_ref))
 ###############################################################################
@@ -728,7 +728,7 @@ def find_citations_with_no_def(ws,
                             if 0 no upper limit is imposed on the phrase length
     :returns the list of citation rows with no definition
     """
-    citation_rows = find_matches_in_sheet(ws, COL_HDR_DEFN, '')
+    citation_rows = find_matches_in_sheet(ws, '', COL_HDR_DEFN)
     if max_num_chars > 0:
         citation_rows = [row for row in citation_rows if row[COL_HDR_PHRASE].value and
                                                          len(row[COL_HDR_PHRASE].value) >= min_num_chars and
@@ -910,8 +910,8 @@ def find_matches_for_file(wb,
                     print(group_name)
                 else:
                     matches = find_matches(wb,
-                                           col_name,
                                            search_term,
+                                           col_name,
                                            do_re_search     = do_re_search,
                                            cell_type        = cell_type,
                                            max_instances    = 1)
@@ -1118,3 +1118,8 @@ if __name__ == "__main__":
 #       for cell in cells:
 #           print(get_formatted_citation(cell.parent, cell.row))
 
+#   display_matches(notes_wb, "..武", COL_HDR_TOPIC, do_re_search = True, cols_to_show = [COL_HDR_CITATION, COL_HDR_CATEGORY, COL_HDR_TOPIC, COL_HDR_PHRASE, COL_HDR_DEFN])
+
+#   ws = notes_wb.get_sheet_by_name(CITATION_SHEETS[0])
+#   citation_row = get_row(ws, 604)
+#   print(get_formatted_citation(citation_row, [COL_HDR_CITATION, COL_HDR_CATEGORY, COL_HDR_TOPIC, COL_HDR_PHRASE, COL_HDR_DEFN]))
