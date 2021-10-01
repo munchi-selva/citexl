@@ -127,6 +127,13 @@ CJK_SHAPE_OL    = u'\u2ffb'         # ⿻    Overlaid
 #################################################
 FILE_TERMS_GROUP = "GRP:"
 
+
+#############################
+# Cantonese dictionary object
+#############################
+canto_dict =  ccdict.CantoDict("cite_dict.db")
+
+
 ###############################################################################
 def header_row(ws):
     # type (Worksheet) -> Tuple
@@ -171,7 +178,7 @@ column_mappings.col_dicts = dict()
 
 ###############################################################################
 def get_col_id(ws, col_name):
-    #type (Worksheet, str) -> str
+    # type (Worksheet, str) -> str
     """
     Returns the letter corresponding to the column with the given name in the
     specified worksheet.
@@ -968,7 +975,7 @@ def fill_defn(citation_row,
     # Each search result bundles up a list of English definitions and
     # Jyutping transcriptions corresponding to the phrase
     #
-    dict_search_res = ccdict.search(phrase_cell.value)
+    dict_search_res = canto_dict.search(phrase_cell.value)
     defn_vals = list()
     jyutping_vals = list()
     for search_res in dict_search_res:
