@@ -123,9 +123,13 @@ CJK_SHAPE_SLL   = u'\u2ffa'         # ⿺    Surround from lower left
 CJK_SHAPE_OL    = u'\u2ffb'         # ⿻    Overlaid
 
 #################################################
-#
+# Field names for JSON search files
 #################################################
-FILE_TERMS_GROUP = "GRP:"
+MSEARCH_NAME        = "search_name"
+MSEARCH_TERMS       = "search_terms"
+MSEARCH_TERM_VALUE  = "search_value"
+MSEARCH_TERM_FIELD  = "search_field"
+MSEARCH_TERM_USE_RE = "use_re_search"
 
 
 #############################
@@ -881,20 +885,19 @@ def find_cells_with_shape_and_value(wb,
 ###############################################################################
 def find_matches_for_file(wb,
                           search_terms_filename,
-                          do_re_search    = False,
-                          col_name        = COL_HDR_PHRASE,
                           cell_type       = CellType.CT_DEFN,
                           cols_to_show    = [COL_HDR_CATEGORY, COL_HDR_PHRASE,
                                              COL_HDR_JYUTPING, COL_HDR_DEFN],
                           show_cell_ref   = True):
     # type (Workbook, str, bool, str, CellType, List[str], bool) -> None
     """
-    Find and display matches in a citation workbook for terms listed in a file
+    Find and display matches in a citation workbook for search terms specified
+    in a JSON file.
+    For search terms with no hits in the citation workbook, revert to a
+    dictionary lookup.
 
     :param  wb:                     A citation workbook
     :param  search_terms_filename:  Name of the file containing the terms
-    :param  do_re_search:           If True, treat search terms as regular expressions
-    :param  col_name:               Name of the column to be searched
     :param  cols_to_show:           Columns to be displayed
     :param  show_cell_ref:          If True, prefix each displayed row with the
                                     cell label
@@ -908,32 +911,31 @@ def find_matches_for_file(wb,
     link_counter = get_link_counts(wb)
 
     with open(search_terms_filename) as search_terms_file:
-        search_term = search_terms_file.readline()
-        while search_term:
-            if (search_term != '\n'):
-                search_term = re.sub('\n$', '', search_term)
-                if re.match('^' + FILE_TERMS_GROUP, search_term):
-                    group_name = re.sub('^' + FILE_TERMS_GROUP + '\s+', '', search_term)
-                    print(group_name)
+        search_groups = json.load(search_terms_file)
+        for search_group in search_groups:
+            print(search_group[MSEARCH_NAME])
+            search_terms = search_group[MSEARCH_TERMS]
+            for search_term in search_terms:
+                search_value = search_term.get(MSEARCH_TERM_VALUE)
+                search_field = search_term.get(MSEARCH_TERM_FIELD, COL_HDR_PHRASE)
+                use_re_search = search_term.get(MSEARCH_TERM_USE_RE, False)
+                matches = find_matches(wb,
+                                       search_value,
+                                       search_field,
+                                       use_re_search,
+                                       max_instances = 1)
+                if len(matches) == 1:
+                    row = matches[0]
+                    cell_name, _ = get_def_name_id_and_label(row[COL_HDR_PHRASE].parent,
+                                                             row[COL_HDR_PHRASE])
+                    occurrences = link_counter[cell_name] + 1
+                    formatted_citation = get_formatted_citation(row,
+                                                                cols_to_show,
+                                                                show_cell_ref)
+                    print("\t({}) {}".format(occurrences, formatted_citation))
                 else:
-                    matches = find_matches(wb,
-                                           search_term,
-                                           col_name,
-                                           do_re_search     = do_re_search,
-                                           cell_type        = cell_type,
-                                           max_instances    = 1)
-                    if len(matches) == 1:
-                        row = matches[0]
-                        cell_name, _ = get_def_name_id_and_label(row[COL_HDR_PHRASE].parent,
-                                                                 row[COL_HDR_PHRASE])
-                        occurrences = link_counter[cell_name] + 1
-                        formatted_citation = get_formatted_citation(row,
-                                                                    cols_to_show,
-                                                                    show_cell_ref)
-                        print("\t({}) {}".format(occurrences, formatted_citation))
-            else:
-                print()
-            search_term = search_terms_file.readline()
+                    canto_dict.show_search(search_value, compact = True,
+                                           indent_str = "\t(-) ")
 ###############################################################################
 
 
@@ -1109,7 +1111,7 @@ if __name__ == "__main__":
     main()
     notes_wb = load_workbook(SOURCE_FILE)
 
-#   find_matches_for_file(notes_wb, 'confounds_list',
+#   find_matches_for_file(notes_wb, 'confounds.match',
 #                         cols_to_show = [COL_HDR_PHRASE, COL_HDR_JYUTPING, COL_HDR_DEFN],
 #                         show_cell_ref = False)
 
