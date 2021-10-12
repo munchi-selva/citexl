@@ -300,7 +300,6 @@ def get_refs_for_ws_phrases(wb,
     :returns Nothing
     """
     if ws_name in CITATION_SHEETS and ws_name in wb.sheetnames:
-        chapter_index = CITATION_SHEETS.index(ws_name)
         ws = wb.get_sheet_by_name(ws_name)
         #
         # Iterate through all non-empty phrase cells of the chapter worksheet
@@ -310,7 +309,7 @@ def get_refs_for_ws_phrases(wb,
             # Find the first cell to define the phrase
             #
             referenced_rows = find_matches(wb, [phrase_cell.value], CITE_FLD_PHRASE, False, CellType.CT_DEFN, 1)
-            referenced_row = referenced_rows[0] if len(referenced_rows) > 0 else None
+            referenced_row  = referenced_rows[0] if len(referenced_rows) > 0 else None
             referenced_cell = referenced_row[CITE_FLD_PHRASE] if referenced_row else None
 
             if referenced_cell and not referenced_cell == phrase_cell:
@@ -391,10 +390,13 @@ def build_reference(referenced_cell,
             referring_cell.value = label
             referring_cell.hyperlink = Hyperlink(ref = referring_cell_loc,
                                                  location = def_name_id)
-            jyutping_cell_loc = '{}{}'.format(get_col_id(referring_ws, CITE_FLD_JYUTPING),
-                                              referring_cell.row)
-            jyutping_cell = referring_ws[jyutping_cell_loc]
+
+            # Clear Jyutping cell contents
+            referring_row       = get_row(referring_ws, referring_cell.row)
+            jyutping_cell       = referring_row[CITE_FLD_JYUTPING]
             jyutping_cell.value = None
+
+            # Assign styles
             assign_style(referring_cell)
             assign_style(jyutping_cell)
 ###############################################################################
@@ -1211,10 +1213,10 @@ if __name__ == "__main__":
     main()
     notes_wb = load_workbook(SOURCE_FILE)
 
-    display_matches_for_file(notes_wb, "confounds.match",
-                             citation_flds = [CITE_FLD_COUNT, CITE_FLD_LABEL,
-                                              CITE_FLD_PHRASE, CITE_FLD_JYUTPING,
-                                              CITE_FLD_DEFN])
+#   display_matches_for_file(notes_wb, "confounds.match",
+#                            citation_flds = [CITE_FLD_COUNT, CITE_FLD_LABEL,
+#                                             CITE_FLD_PHRASE, CITE_FLD_JYUTPING,
+#                                             CITE_FLD_DEFN])
 
 #   for sheet_name in CITATION_SHEETS:
 #       fill_in_sheet(notes_wb, sheet_name, True)
