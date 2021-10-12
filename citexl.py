@@ -239,19 +239,22 @@ def find_closest_value(ws,
 
 
 ###############################################################################
-def get_def_name_id_and_label(cell):
-    # type: (Worksheet, Cell) -> (str, str)
+def get_citation_ids(cell):
+    # type: (Cell) -> (str, str, str)
     """
-    Returns the defined name and a label for referring to a specified cell that
-    is part of book citation.
-    The defined name is built from the chapter name (i.e. worksheet title),
-    page number, line number of the citation, plus its rank amongst citations
-    for that chapter/page/line number combination.
+    Returns a set of identifiers for the citation that includes a given cell.
+    The set includes:
+        1. A defined name built from the chapter name (i.e. worksheet title),
+           page number, line number of the citation, and its rank amongst
+           citations for that chapter/page/line number combination.
+        2. A short label, giving the chapter/page/line numbers.
+        3. A verbose label, augmenting the short label with the citation row
+           number.
 
     :param  cell:   A citation workbook/worksheet cell
-    :returns: The defined name and label for referring to the cell.
+    :returns The defined name and labels for referring to the cell.
     """
-    id = label = None
+    id = short_label = verbose_label = None
 
     ws = cell.parent
     page_col = get_col_id(ws, CITE_FLD_PAGE)
@@ -267,10 +270,11 @@ def get_def_name_id_and_label(cell):
                         chap_name, DEF_NAME_ID_SEP,
                         page_number, DEF_NAME_ID_SEP,
                         line_number, DEF_NAME_ID_SEP, ref_number)
-        label =  '{}{}{}{}{}'.format(chap_name, REF_LABEL_SEP,
+        short_label =  '{}{}{}{}{}'.format(chap_name, REF_LABEL_SEP,
                                      page_number, REF_LABEL_SEP, line_number)
+        verbose_label = "{}!{}".format(short_label, cell.row)
 
-    return id, label
+    return id, short_label, verbose_label
 ###############################################################################
 
 
@@ -359,7 +363,7 @@ def build_reference(referenced_cell,
     # Generate an identifier for the defined name, and the label for referring
     # to the referenced cell (i.e. displayed in the referring cell)
     #
-    def_name_id, label = get_def_name_id_and_label(referenced_cell)
+    def_name_id, label, _ = get_citation_ids(referenced_cell)
     if not def_name_id is None and not label is None:
         workbook = referenced_ws.parent
         if not def_name_id in workbook.defined_names:
@@ -658,12 +662,10 @@ def format_citation(citation_row,
 
     if CITE_FLD_LABEL in citation_flds:
         #
-        # Compute the prefix based on the citation row's phrase cell
+        # Generate the citation label
         #
-        phrase_cell = citation_row[CITE_FLD_PHRASE]
-        row_number = phrase_cell.row
-        _, citation_label = get_def_name_id_and_label(phrase_cell)
-        citation_values[CITE_FLD_LABEL] = "[{}!{}]\t".format(citation_label, row_number)
+        _, _, citation_label = get_citation_ids(citation_row[CITE_FLD_PHRASE])
+        citation_values[CITE_FLD_LABEL] = citation_label
 
     return format_citation_values(citation_values, citation_flds)
 ###############################################################################
@@ -976,9 +978,8 @@ def find_matches_for_file(wb,
                     #
                     phrase_cell = citation_row[CITE_FLD_PHRASE]
                     row_number = phrase_cell.row
-                    citation_name, citation_label = get_def_name_id_and_label(phrase_cell)
+                    citation_name, _, citation_label = get_citation_ids(phrase_cell)
                     occurrences = link_counter[citation_name] + 1
-                    citation_ref_str = "[{}!{}]\t".format(citation_label, row_number)
 
                     #
                     # Generate the citation field name to value mapping,
@@ -986,7 +987,7 @@ def find_matches_for_file(wb,
                     #
                     citation_values = dict([(citation_data[0], citation_data[1].value) for citation_data in citation_row.items()])
                     citation_values[CITE_FLD_COUNT] = occurrences
-                    citation_values[CITE_FLD_LABEL] = citation_ref_str
+                    citation_values[CITE_FLD_LABEL] = citation_label
                     group_matches.append(citation_values)
                 else:
                     #
@@ -1210,10 +1211,10 @@ if __name__ == "__main__":
     main()
     notes_wb = load_workbook(SOURCE_FILE)
 
-#   display_matches_for_file(notes_wb, "confounds.match",
-#                            citation_flds = [CITE_FLD_COUNT, CITE_FLD_LABEL,
-#                                             CITE_FLD_PHRASE, CITE_FLD_JYUTPING,
-#                                             CITE_FLD_DEFN])
+    display_matches_for_file(notes_wb, "confounds.match",
+                             citation_flds = [CITE_FLD_COUNT, CITE_FLD_LABEL,
+                                              CITE_FLD_PHRASE, CITE_FLD_JYUTPING,
+                                              CITE_FLD_DEFN])
 
 #   for sheet_name in CITATION_SHEETS:
 #       fill_in_sheet(notes_wb, sheet_name, True)
@@ -1230,7 +1231,7 @@ if __name__ == "__main__":
 
 #   display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True)
 
-#   display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True, citation_flds = [CITE_FLD_LABEL, CITE_FLD_CITATION, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
+    display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True, citation_flds = [CITE_FLD_LABEL, CITE_FLD_CITATION, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
 
 #   display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True, citation_flds = [CITE_FLD_CITATION, CITE_FLD_LABEL, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
 
