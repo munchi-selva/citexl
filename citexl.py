@@ -996,7 +996,7 @@ def find_matches_for_file(wb,
                     # Generate an artificial citation mapping via a dictionary
                     # search
                     #
-                    dict_matches = canto_dict.search(search_value)
+                    dict_matches = canto_dict.search_dict(search_value)
                     for dict_match in dict_matches:
                         citation_values = dict()
                         for cite_fld in CiteFldToDictFld.keys():
@@ -1079,7 +1079,7 @@ def fill_defn(citation_row,
     # Each search result bundles up a list of English definitions and
     # Jyutping transcriptions corresponding to the phrase
     #
-    dict_search_res = canto_dict.search(phrase_cell.value)
+    dict_search_res = canto_dict.search_dict(phrase_cell.value)
     defn_vals = list()
     jyutping_vals = list()
     for search_res in dict_search_res:
