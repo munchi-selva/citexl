@@ -319,14 +319,8 @@ def get_refs_for_ws_phrases(wb,
                 referenced_ws = referenced_cell.parent
                 referenced_chap = referenced_ws.title
 
-                print("{}!{}{} ({}) --> {}!{}{}".format(
-                      ws.title,
-                      phrase_cell.column_letter, phrase_cell.row,
-                      phrase_cell.value,
-                      referenced_chap, referenced_cell.column_letter, referenced_cell.row))
-
-                referring_cell_loc = '{}{}'.format(get_col_id(ws, CITE_FLD_DEFN), phrase_cell.row)
-                referring_cell = ws[referring_cell_loc]
+                referring_row = get_row(ws, phrase_cell.row)
+                referring_cell = referring_row[CITE_FLD_DEFN]
                 build_reference(referenced_cell, referring_cell, overwrite, audit_only)
 ###############################################################################
 
@@ -353,6 +347,11 @@ def build_reference(referenced_cell,
     """
 
     #
+    # Tracks actions required in order to build the reference
+    #
+    audit_log = list()
+
+    #
     # Retrieve referenced and referring worksheets for convenience
     #
     referenced_ws   = referenced_cell.parent
@@ -366,6 +365,8 @@ def build_reference(referenced_cell,
     if not def_name_id is None and not label is None:
         workbook = referenced_ws.parent
         if not def_name_id in workbook.defined_names:
+            new_defined_name = True
+
             #
             # Create the defined name
             #
@@ -374,18 +375,17 @@ def build_reference(referenced_cell,
                                                       referenced_cell.row)
             def_name = DefinedName(name = def_name_id,
                                    attr_text = def_name_destination)
-            print("\tCreate defined name: {}: {}".format(def_name_destination,
-                                                         def_name_id))
+            audit_log.append("Create defined name: {}: {}".format(def_name_destination, def_name_id))
+
             if not audit_only:
                 workbook.defined_names.append(def_name)
 
     write_needed = referring_cell.value is None or (overwrite and referring_cell.value != label)
-    referring_cell_loc = '{}{}'.format(referring_cell.column_letter,
-                                       referring_cell.row)
+    referring_cell_loc = referring_cell.coordinate
     if write_needed:
-        print('\t{}!{} current value = {}'.format(referring_ws.title,
-                                                  referring_cell_loc,
-                                                  referring_cell.value))
+        audit_log.append("{}!{} current value = {}".format(referring_ws.title,
+                                                             referring_cell_loc,
+                                                             referring_cell.value))
         if not audit_only:
             referring_cell.value = label
             referring_cell.hyperlink = Hyperlink(ref = referring_cell_loc,
@@ -399,6 +399,14 @@ def build_reference(referenced_cell,
             # Assign styles
             assign_style(referring_cell)
             assign_style(jyutping_cell)
+
+    if len(audit_log) != 0:
+        print("{}!{} ({}) --> {}!{}".format(
+              referring_ws.title, referring_cell.coordinate, referring_cell.value,
+              referenced_ws.title, referenced_cell.coordinate))
+        for audit_msg in audit_log:
+            print("\t{}".format(audit_msg))
+
 ###############################################################################
 
 
@@ -568,9 +576,10 @@ def find_matches_in_sheet(ws,
         search_terms = [search_terms]
 
     #
-    # Replace the empty string with None to allow searching for blank column values
+    # Add None to allow searching for blank column values if appropriate
     #
-    search_terms = [search_term if search_term else None for search_term in search_terms]
+    if "" in search_terms and None not in search_terms:
+        search_terms.append(None)
 
     #
     # Build the list of cells in the worksheet matching the search terms
@@ -780,7 +789,7 @@ def find_citations_with_no_def(ws,
                             if 0 no upper limit is imposed on the phrase length
     :returns the list of citation rows with no definition
     """
-    citation_rows = find_matches_in_sheet(ws, '', CITE_FLD_DEFN)
+    citation_rows = find_matches_in_sheet(ws, "", CITE_FLD_DEFN)
     if max_num_chars > 0:
         citation_rows = [row for row in citation_rows if row[CITE_FLD_PHRASE].value and
                                                          len(row[CITE_FLD_PHRASE].value) >= min_num_chars and
@@ -1154,7 +1163,6 @@ def fill_in_sheet(wb,
             if not fill_defn(citation_row, overwrite, False):
                 citations_with_no_def.append(citation_row)
 
-
         print("Definition still required...")
         for citation_row in citations_with_no_def:
             phrase_cell         = citation_row[CITE_FLD_PHRASE]
@@ -1222,6 +1230,7 @@ if __name__ == "__main__":
 #       fill_in_sheet(notes_wb, sheet_name, True)
 #   fill_in_sheet(notes_wb, "四十一", True)
 #   fill_in_last_sheet(notes_wb)
+#   fill_in_last_sheet(notes_wb, True)
 #   save_changes(notes_wb)
 
     if  sys.version_info.major ==  2:
@@ -1233,7 +1242,7 @@ if __name__ == "__main__":
 
 #   display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True)
 
-    display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True, citation_flds = [CITE_FLD_LABEL, CITE_FLD_CITATION, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
+#   display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True, citation_flds = [CITE_FLD_LABEL, CITE_FLD_CITATION, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
 
 #   display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True, citation_flds = [CITE_FLD_CITATION, CITE_FLD_LABEL, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
 
