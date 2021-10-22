@@ -68,16 +68,21 @@ STYLE_LINK      = 'BookRef_Link'
 # Citation fields names:
 # values are retrieved directly or generated from a citation worksheet
 #########################################################################
-CITE_FLD_PAGE       = "頁"
-CITE_FLD_LINE       = "直行"
-CITE_FLD_CITATION   = "引句"
-CITE_FLD_CATEGORY   = "範疇"
-CITE_FLD_TOPIC      = "題"
-CITE_FLD_PHRASE     = "字詞"
-CITE_FLD_JYUTPING   = "粵拼"
-CITE_FLD_DEFN       = "定義"
-CITE_FLD_LABEL      = "citation_label"
-CITE_FLD_COUNT      = "citation_count"
+CITE_FLD_CHAPTER        = "回"                  # Generated
+CITE_FLD_PAGE           = "頁"                  # Retrieved/generated
+CITE_FLD_LINE           = "直行"                # Retrieved/generated
+CITE_FLD_LINE_INSTANCE  = "instance_number"     # Generated
+CITE_FLD_CITATION       = "引句"                # Retrieved
+CITE_FLD_CATEGORY       = "範疇"                # Retrieved
+CITE_FLD_TOPIC          = "題"                  # Retrieved
+CITE_FLD_PHRASE         = "字詞"                # Retrieved
+CITE_FLD_JYUTPING       = "粵拼"                # Retrieved
+CITE_FLD_DEFN           = "定義"                # Retrieved/generated
+CITE_FLD_ID             = "cite_id"             # Generated
+CITE_FLD_LBL_SHORT      = "cite_label_short"    # Generated
+CITE_FLD_LBL_VERBOSE    = "cite_label_verbose"  # Generated
+CITE_FLD_COUNT          = "citation_count"      # Generated
+
 
 ###############################################
 # Mapping between citation and CantoDict fields
@@ -239,46 +244,6 @@ def find_closest_value(ws,
 
 
 ###############################################################################
-def get_citation_ids(cell):
-    # type: (Cell) -> (str, str, str)
-    """
-    Returns a set of identifiers for the citation that includes a given cell.
-    The set includes:
-        1. A defined name built from the chapter name (i.e. worksheet title),
-           page number, line number of the citation, and its rank amongst
-           citations for that chapter/page/line number combination.
-        2. A short label, giving the chapter/page/line numbers.
-        3. A verbose label, augmenting the short label with the citation row
-           number.
-
-    :param  cell:   A citation workbook/worksheet cell
-    :returns The defined name and labels for referring to the cell.
-    """
-    id = short_label = verbose_label = None
-
-    ws = cell.parent
-    page_col = get_col_id(ws, CITE_FLD_PAGE)
-    line_col = get_col_id(ws, CITE_FLD_LINE)
-
-    chap_name = ws.title
-    page_number, _ = find_closest_value(ws, page_col, cell.row)
-    line_number, ref_number = find_closest_value(ws, line_col, cell.row)
-
-    if not page_number is None and not line_number is None:
-        # All required reference components are defined... go!
-        id = '{}{}{:02d}{}{:02d}{}{:02d}'.format(
-                        chap_name, DEF_NAME_ID_SEP,
-                        page_number, DEF_NAME_ID_SEP,
-                        line_number, DEF_NAME_ID_SEP, ref_number)
-        short_label =  '{}{}{}{}{}'.format(chap_name, REF_LABEL_SEP,
-                                     page_number, REF_LABEL_SEP, line_number)
-        verbose_label = "{}!{}".format(short_label, cell.row)
-
-    return id, short_label, verbose_label
-###############################################################################
-
-
-###############################################################################
 def get_refs_for_ws_phrases(wb,
                             ws_name,
                             overwrite,
@@ -316,33 +281,30 @@ def get_refs_for_ws_phrases(wb,
                 #
                 # Ensure this cell isn't the one providing the definition!
                 #
-                referenced_ws = referenced_cell.parent
-                referenced_chap = referenced_ws.title
-
-                referring_row = get_row(ws, phrase_cell.row)
-                referring_cell = referring_row[CITE_FLD_DEFN]
-                build_reference(referenced_cell, referring_cell, overwrite, audit_only)
+                referring_row = get_cit_row(ws, phrase_cell.row)
+                build_reference(referenced_row, referring_row, overwrite, audit_only)
 ###############################################################################
 
 
 ###############################################################################
-def build_reference(referenced_cell,
-                    referring_cell,
+def build_reference(referenced_row,
+                    referring_row,
                     overwrite       = False,
                     audit_only      = False):
-    # type: (Worksheet, Cell, Worksheet, Cell, bool, bool) -> None
+    # type: (Dict, Dict, bool, bool) -> None
     """
-    Builds a reference to one cell in another.
+    Builds a reference between two citation rows.
     The referencing is achieved by creating a defined name that includes
-    the referenced cell, and linking to this name from the referring cell.
+    the referenced row's phrase cell, and linking to this name from the
+    referring row's phrase cell.
 
-    :param  referenced_cell     The referenced cell
-    :param  referring_cell      The referring cell
-    :param  overwrite           If True, overwrite any existing content in the
-                                referring cell (if this isn't already a label
-                                for the referenced cell)
-    :param  audit_only          If True, show/print the actions for building
-                                the reference, but do not modify the data
+    :param  referenced_row  The referenced row
+    :param  referring_row   The referring row
+    :param  overwrite       If True, overwrite any existing content in the
+                            referring definition cell (if this isn't already the
+                            label for the referenced phrase cell)
+    :param  audit_only      If True, show/print the actions for building the
+                            reference, but do not modify the data
     :returns: Nothing
     """
 
@@ -352,21 +314,25 @@ def build_reference(referenced_cell,
     audit_log = list()
 
     #
-    # Retrieve referenced and referring worksheets for convenience
+    # Retrieve referenced and referring cells and worksheets
     #
+    referenced_cell = referenced_row[CITE_FLD_PHRASE]
     referenced_ws   = referenced_cell.parent
+    referring_cell  = referring_row[CITE_FLD_DEFN]
     referring_ws    = referring_cell.parent
 
     #
-    # Generate an identifier for the defined name, and the label for referring
-    # to the referenced cell (i.e. displayed in the referring cell)
+    # Retrieve an identifier for the defined name, and the label for referring
+    # to the referenced cell (to be displayed in the referring cell)
     #
-    def_name_id, label, _ = get_citation_ids(referenced_cell)
+    referenced_cit_vals = get_cit_values(referenced_row,
+                                         fields_to_fill = [CITE_FLD_ID, CITE_FLD_LBL_SHORT])
+    def_name_id = referenced_cit_vals[CITE_FLD_ID]
+    label = referenced_cit_vals[CITE_FLD_LBL_SHORT]
+
     if not def_name_id is None and not label is None:
         workbook = referenced_ws.parent
         if not def_name_id in workbook.defined_names:
-            new_defined_name = True
-
             #
             # Create the defined name
             #
@@ -384,15 +350,14 @@ def build_reference(referenced_cell,
     referring_cell_loc = referring_cell.coordinate
     if write_needed:
         audit_log.append("{}!{} current value = {}".format(referring_ws.title,
-                                                             referring_cell_loc,
-                                                             referring_cell.value))
+                                                           referring_cell_loc,
+                                                           referring_cell.value))
         if not audit_only:
             referring_cell.value = label
             referring_cell.hyperlink = Hyperlink(ref = referring_cell_loc,
                                                  location = def_name_id)
 
             # Clear Jyutping cell contents
-            referring_row       = get_row(referring_ws, referring_cell.row)
             jyutping_cell       = referring_row[CITE_FLD_JYUTPING]
             jyutping_cell.value = None
 
@@ -406,8 +371,8 @@ def build_reference(referenced_cell,
               referenced_ws.title, referenced_cell.coordinate))
         for audit_msg in audit_log:
             print("\t{}".format(audit_msg))
-
 ###############################################################################
+
 
 
 ###############################################################################
@@ -474,18 +439,77 @@ def get_citation_sheets(wb):
 
 
 ###############################################################################
-def get_row(ws,
-            row):
+def get_cit_row(ws,
+                row_number):
     # type: (Worksheet, int) -> Dict
     """
-    Retrieves a citation row, formatted as a column name to Cell mapping.
+    Retrieves a citation row, formatted as a field name to Cell mapping.
 
-    :param  ws:     A citation worksheet
-    :param  row:    A 1-based row number
-    :returns a column name to Cell mapping for the specified row.
+    :param  ws:         A citation worksheet
+    :param  row_number: A 1-based row number
+    :returns a field name to Cell mapping for the specified row.
     """
     return dict(zip([header_cell.value for header_cell in header_row(ws)],
-                    ws[row]))
+                    ws[row_number]))
+###############################################################################
+
+
+###############################################################################
+def get_cit_values(cit_row,
+                   fields_to_fill = [CITE_FLD_CHAPTER, \
+                                     CITE_FLD_PAGE, \
+                                     CITE_FLD_LINE, \
+                                     CITE_FLD_LINE_INSTANCE, \
+                                     CITE_FLD_ID, \
+                                     CITE_FLD_LBL_SHORT, \
+                                     CITE_FLD_LBL_VERBOSE]):
+    # type: (Worksheet, int) -> Dict
+    """
+    Retrieves a citation row's values, formatted as field name to value mappings
+
+    :param  cit_row:        The citation row
+    :param  fields_to_fill: Fields that should be generated/filled in if the
+                            worksheet does not provide a (direct) value
+    :returns a field name to value for the specified row.
+    """
+    ws          = cit_row[CITE_FLD_PHRASE].parent
+    row_number  = cit_row[CITE_FLD_PHRASE].row
+    cit_values  = dict([(cit_data[0], cit_data[1].value) for cit_data in cit_row.items()])
+
+    cit_chapter = ws.title
+    cit_page, _             = find_closest_value(ws, get_col_id(ws, CITE_FLD_PAGE), row_number)
+    cit_line, cit_instance  = find_closest_value(ws, get_col_id(ws, CITE_FLD_LINE), row_number)
+    cit_label_short         = "{}{}{}{}{}".format(cit_chapter, REF_LABEL_SEP, cit_page, REF_LABEL_SEP, cit_line)
+
+    cit_values[CITE_FLD_CHAPTER] = ws.title
+    if CITE_FLD_PAGE in fields_to_fill:
+        cit_values[CITE_FLD_PAGE] = cit_page
+    if CITE_FLD_LINE in fields_to_fill:
+        cit_values[CITE_FLD_LINE] = cit_line
+    if CITE_FLD_LINE_INSTANCE in fields_to_fill:
+        cit_values[CITE_FLD_LINE_INSTANCE] = cit_instance
+    if CITE_FLD_ID in fields_to_fill:
+        cit_values[CITE_FLD_ID] = "{}{}{:02d}{}{:02d}{}{:02d}".format(
+                                  cit_chapter, DEF_NAME_ID_SEP,
+                                  cit_page, DEF_NAME_ID_SEP,
+                                  cit_line, DEF_NAME_ID_SEP, cit_instance)
+    if CITE_FLD_LBL_SHORT in fields_to_fill:
+        cit_values[CITE_FLD_LBL_SHORT] = cit_label_short
+    if CITE_FLD_LBL_VERBOSE in fields_to_fill:
+        cit_values[CITE_FLD_LBL_VERBOSE] = "{}!{}".format(cit_label_short, row_number)
+    if CITE_FLD_DEFN in fields_to_fill:
+        wb  = ws.parent
+        defn_cell = cit_row.get(CITE_FLD_DEFN, None)
+        if defn_cell and defn_cell.hyperlink and \
+           defn_cell.hyperlink.location in wb.defined_names:
+            defn_source_defined_name = list(wb.defined_names[defn_cell.hyperlink.location].destinations)[0]
+            defn_source_ws = wb.get_sheet_by_name(defn_source_defined_name[0])
+            defn_source = defn_source_ws[defn_source_defined_name[1]]
+            defn_source_row = get_cit_row(defn_source.parent, defn_source.row)
+            cit_values[CITE_FLD_DEFN] = defn_source_row[CITE_FLD_DEFN].value
+            cit_values[CITE_FLD_JYUTPING] = defn_source_row[CITE_FLD_JYUTPING].value
+
+    return cit_values
 ###############################################################################
 
 
@@ -594,7 +618,7 @@ def find_matches_in_sheet(ws,
     #
     # Retrieve the corresponding rows
     #
-    matching_rows = [get_row(ws, cell.row) for cell in matching_cells]
+    matching_rows = [get_cit_row(ws, cell.row) for cell in matching_cells]
 
     #
     # Filter based on cell type
@@ -646,16 +670,19 @@ def format_citation_val(citation_val,
     elif fld_name == CITE_FLD_COUNT:
         display_value = "({})".format(citation_val) if citation_val is not None else ""
         display_delim = " "
-    elif fld_name == CITE_FLD_LABEL:
+    elif fld_name == CITE_FLD_LBL_VERBOSE:
         display_value = citation_val if citation_val else ""
         display_delim = "\t"
+    else:
+        display_value = citation_val if citation_val else ""
+        display_delim = " "
     return display_value, display_delim
 ###############################################################################
 
 
 ###############################################################################
 def format_citation(citation_row,
-                    citation_flds = [CITE_FLD_LABEL,
+                    citation_flds = [CITE_FLD_LBL_VERBOSE,
                                      CITE_FLD_CATEGORY, CITE_FLD_PHRASE,
                                      CITE_FLD_JYUTPING, CITE_FLD_DEFN]):
     # type: (Dict, List) -> str
@@ -666,17 +693,11 @@ def format_citation(citation_row,
     :param  citation_flds:  Fields to include
     :returns the citation as a formatted string
     """
-    #
-    # Extract the mapping between citation column names and values
-    #
-    citation_values = dict([(citation_data[0], citation_data[1].value) for citation_data in citation_row.items()])
 
-    if CITE_FLD_LABEL in citation_flds:
-        #
-        # Generate the citation label
-        #
-        _, _, citation_label = get_citation_ids(citation_row[CITE_FLD_PHRASE])
-        citation_values[CITE_FLD_LABEL] = citation_label
+    #
+    # Retrieve the mapping between citation column names and values
+    #
+    citation_values = get_cit_vals(citation_row, citation_flds)
 
     return format_citation_values(citation_values, citation_flds)
 ###############################################################################
@@ -710,7 +731,7 @@ def display_matches(wb,
                     do_re_search    = False,
                     cell_type       = CellType.CT_DEFN,
                     max_instances   = -1,
-                    citation_flds   = [CITE_FLD_LABEL, CITE_FLD_CATEGORY,
+                    citation_flds   = [CITE_FLD_LBL_VERBOSE, CITE_FLD_CATEGORY,
                                        CITE_FLD_PHRASE, CITE_FLD_JYUTPING,
                                        CITE_FLD_DEFN]):
     # type: (Workbook, str/List(str), str, bool, CellType, int, List[str]) -> None
@@ -755,7 +776,7 @@ def show_definedname_cells(wb):
     for cs_name in cs_names:
         ws = wb.get_sheet_by_name(cs_name)
         for cell_loc in defined_name_dict[cs_name]:
-            print(format_citation(get_row(ws, ws[cell_loc].row)))
+            print(format_citation(get_cit_row(ws, ws[cell_loc].row)))
 ###############################################################################
 
 
@@ -860,7 +881,7 @@ def show_multiply_used_defns(wb):
         defined_name = notes_wb.defined_names.get(link_name)
         ws_name, cell_loc = defined_name.attr_text.split('!')
         ws = wb.get_sheet_by_name(ws_name)
-        print("({}) {}".format(ref_count + 1, format_citation(get_row(ws, ws[cell_loc].row))))
+        print("({}) {}".format(ref_count + 1, format_citation(get_cit_row(ws, ws[cell_loc].row))))
 ###############################################################################
 
 
@@ -982,23 +1003,12 @@ def find_matches_for_file(wb,
                                                 max_instances = 1)
                 if len(citation_matches) == 1:
                     citation_row = citation_matches[0]
+                    citation_values = get_cit_values(citation_row)
 
                     #
-                    # Compute the number of occurrences of the cited phrase and
-                    # a reference label for this citation
+                    # Compute the number of occurrences of the cited phrase
                     #
-                    phrase_cell = citation_row[CITE_FLD_PHRASE]
-                    row_number = phrase_cell.row
-                    citation_name, _, citation_label = get_citation_ids(phrase_cell)
-                    occurrences = link_counter[citation_name] + 1
-
-                    #
-                    # Generate the citation field name to value mapping,
-                    # including the data computed above
-                    #
-                    citation_values = dict([(citation_data[0], citation_data[1].value) for citation_data in citation_row.items()])
-                    citation_values[CITE_FLD_COUNT] = occurrences
-                    citation_values[CITE_FLD_LABEL] = citation_label
+                    citation_values[CITE_FLD_COUNT] = link_counter[citation_values[CITE_FLD_ID]] + 1
                     group_matches.append(citation_values)
                 else:
                     #
@@ -1023,7 +1033,7 @@ def find_matches_for_file(wb,
 def display_matches_for_file(wb,
                              search_terms_filename,
                              cell_type              = CellType.CT_DEFN,
-                             citation_flds          = [CITE_FLD_LABEL,
+                             citation_flds          = [CITE_FLD_LBL_VERBOSE,
                                                        CITE_FLD_COUNT,
                                                        CITE_FLD_CATEGORY,
                                                        CITE_FLD_PHRASE,
@@ -1222,7 +1232,7 @@ if __name__ == "__main__":
     notes_wb = load_workbook(SOURCE_FILE)
 
 #   display_matches_for_file(notes_wb, "confounds.match",
-#                            citation_flds = [CITE_FLD_COUNT, CITE_FLD_LABEL,
+#                            citation_flds = [CITE_FLD_COUNT, CITE_FLD_LBL_VERBOSE,
 #                                             CITE_FLD_PHRASE, CITE_FLD_JYUTPING,
 #                                             CITE_FLD_DEFN])
 
@@ -1232,7 +1242,7 @@ if __name__ == "__main__":
 #   fill_in_last_sheet(notes_wb)
 #   fill_in_last_sheet(notes_wb, True)
 #   save_changes(notes_wb)
-
+ 
     if  sys.version_info.major ==  2:
         show_char_decomposition('彆')
 #       cjk = characterlookup.CharacterLookup('T')
@@ -1242,10 +1252,6 @@ if __name__ == "__main__":
 
 #   display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True)
 
-#   display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True, citation_flds = [CITE_FLD_LABEL, CITE_FLD_CITATION, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
+#   display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True, citation_flds = [CITE_FLD_LBL_VERBOSE, CITE_FLD_CITATION, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
 
-#   display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True, citation_flds = [CITE_FLD_CITATION, CITE_FLD_LABEL, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
-
-#   ws = notes_wb.get_sheet_by_name(CITATION_SHEETS[0])
-#   citation_row = get_row(ws, 604)
-#   print(format_citation(citation_row, [CITE_FLD_CITATION, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN]))
+#   display_matches(notes_wb, "..武", CITE_FLD_TOPIC, do_re_search = True, citation_flds = [CITE_FLD_CITATION, CITE_FLD_LBL_VERBOSE, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
