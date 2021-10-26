@@ -265,12 +265,42 @@ def get_named_row(ws,
 
 
 ###############################################################################
+def assign_style(cell):
+    # type: (Cell) -> None
+    """
+    Assigns the appropriate style to a citation worksheet cell
+
+    :param  cell    The cell to be styled
+    :returns: Nothing
+    """
+    cell.style = STYLE_GENERAL if cell.hyperlink is None else STYLE_LINK
+###############################################################################
+
+
+###############################################################################
+def style_citation_sheet(ws):
+    # type: (Cell) -> None
+    """
+    Assigns the appropriate style to all cells in a citation worksheet
+
+    :param  ws  The worksheet
+    :returns: Nothing
+    """
+    for row in ws.iter_rows():
+        for cell in row:
+            assign_style(cell)
+###############################################################################
+
+
+###############################################################################
 # A class that wraps up functionality for managing a citation spreadsheet
 ###############################################################################
 class CitationWB(object):
+    ###########################################################################
     def __init__(self,
                  source_file            = SOURCE_FILE,
                  citation_sheet_names   = CITATION_SHEETS):
+        # type: (str, List) -> CitationWB
         """
         Citation workbook constructor
 
@@ -282,6 +312,7 @@ class CitationWB(object):
         self.wb = None
         self.wb_links = None
         self.reload()
+    ###########################################################################
 
 
     ###########################################################################
@@ -309,6 +340,20 @@ class CitationWB(object):
 
 
     ###########################################################################
+    def get_citation_sheets(self):
+        # type: () -> List[Worksheet]
+        """
+        Retrieves the workbook's citation worksheets
+
+        :returns a list of the citation worksheets
+        """
+        return [self.wb.get_sheet_by_name(ws_name) for ws_name
+                    in self.citation_sheet_names
+                    if ws_name in self.wb.sheetnames]
+    ###########################################################################
+
+
+    ###########################################################################
     @staticmethod
     def get_defn_links(ws):
         # type (Worksheet) -> List[str]
@@ -323,84 +368,6 @@ class CitationWB(object):
                     in ws[get_col_id(ws, CITE_FLD_DEFN)]
                     if defn_cell.hyperlink and defn_cell.hyperlink.location]
         return links
-    ###########################################################################
-
-
-    ###############################################################################
-    @staticmethod
-    def format_cit_value(cit_value,
-                         fld_name):
-        # type: (str, str) -> (str, str)
-        """
-        Generates a formatted version of a citation field value, plus its trailing
-        delimiter
-
-        :param  cit_value:  Raw citation field value
-        :param  fld_name:   Name of the citation field
-        :returns the formatted field value and trailing delimiter.
-        """
-        display_value = ""
-        display_delim = ""
-        if fld_name == CITE_FLD_CITE_TEXT:
-            display_value = "\"{}\"".format(cit_value) if cit_value else "-"
-            display_delim = ' '
-        elif fld_name == CITE_FLD_CATEGORY:
-            display_value = "<{}>".format(cit_value if cit_value else "-")
-            display_delim = " "
-        elif fld_name == CITE_FLD_TOPIC:
-            display_value = "[{}]".format(cit_value) if cit_value else ""
-            display_delim = " "
-        elif fld_name == CITE_FLD_PHRASE or fld_name == CITE_FLD_DEFN:
-            display_value = cit_value if cit_value else ""
-            display_delim = "\t"
-        elif fld_name == CITE_FLD_JYUTPING:
-            display_value = "({})".format(cit_value) if cit_value else ""
-            display_delim = "\t"
-        elif fld_name == CITE_FLD_COUNT:
-            display_value = "({})".format(cit_value) if cit_value is not None else ""
-            display_delim = " "
-        elif fld_name == CITE_FLD_LBL_VERBOSE:
-            display_value = cit_value if cit_value else ""
-            display_delim = "\t"
-        else:
-            display_value = cit_value if cit_value else ""
-            display_delim = " "
-        return display_value, display_delim
-    ###############################################################################
-
-
-    ###############################################################################
-    @staticmethod
-    def format_cit_values(cit_values,
-                          cit_fields = [CITE_FLD_CATEGORY, CITE_FLD_PHRASE,
-                                        CITE_FLD_JYUTPING, CITE_FLD_DEFN]):
-        # type: (Dict, List) -> str
-        """
-        Retrieves a formatted string corresponding to a citation
-
-        :param  cit_values: Field to value mapping for the citation
-        :param  cit_fields: Fields to include
-        :returns the selected citation values as formatted string
-        """
-        cit_str = ""
-        for cit_field in cit_fields:
-            fld_display_value, delim = CitationWB.format_cit_value(cit_values.get(cit_field, None),
-                                                                   cit_field)
-            cit_str += "{}{}".format(fld_display_value, delim)
-        return cit_str
-    ###############################################################################
-
-
-    ###########################################################################
-    def get_citation_sheets(self):
-        # type: None -> List[Worksheet]
-        """
-        Retrieves the workbook's citation worksheets
-
-        :returns a list of the citation worksheets
-        """
-        return [self.wb.get_sheet_by_name(ws_name) for ws_name in
-                self.citation_sheet_names if ws_name in self.wb.sheetnames]
     ###########################################################################
 
 
@@ -430,7 +397,7 @@ class CitationWB(object):
     def style_workbook(self):
         # type: () -> None
         """
-        Assigns the appropriate style to all citation worksheets in the workbook
+        Assigns the appropriate style to all the workbook's citation worksheets
         :param  wb  The workbook
         :returns: Nothing
         """
@@ -503,7 +470,72 @@ class CitationWB(object):
     ###########################################################################
 
 
-    ###############################################################################
+    ###########################################################################
+    @staticmethod
+    def format_cit_value(cit_value,
+                         fld_name):
+        # type: (str, str) -> (str, str)
+        """
+        Generates a formatted version of a citation field value, plus its trailing
+        delimiter
+
+        :param  cit_value:  Raw citation field value
+        :param  fld_name:   Name of the citation field
+        :returns the formatted field value and trailing delimiter.
+        """
+        display_value = ""
+        display_delim = ""
+        if fld_name == CITE_FLD_CITE_TEXT:
+            display_value = "\"{}\"".format(cit_value) if cit_value else "-"
+            display_delim = ' '
+        elif fld_name == CITE_FLD_CATEGORY:
+            display_value = "<{}>".format(cit_value if cit_value else "-")
+            display_delim = " "
+        elif fld_name == CITE_FLD_TOPIC:
+            display_value = "[{}]".format(cit_value) if cit_value else ""
+            display_delim = " "
+        elif fld_name == CITE_FLD_PHRASE or fld_name == CITE_FLD_DEFN:
+            display_value = cit_value if cit_value else ""
+            display_delim = "\t"
+        elif fld_name == CITE_FLD_JYUTPING:
+            display_value = "({})".format(cit_value) if cit_value else ""
+            display_delim = "\t"
+        elif fld_name == CITE_FLD_COUNT:
+            display_value = "({})".format(cit_value) if cit_value is not None else ""
+            display_delim = " "
+        elif fld_name == CITE_FLD_LBL_VERBOSE:
+            display_value = cit_value if cit_value else ""
+            display_delim = "\t"
+        else:
+            display_value = cit_value if cit_value else ""
+            display_delim = " "
+        return display_value, display_delim
+    ###########################################################################
+
+
+    ###########################################################################
+    @staticmethod
+    def format_cit_values(cit_values,
+                          cit_fields = [CITE_FLD_CATEGORY, CITE_FLD_PHRASE,
+                                        CITE_FLD_JYUTPING, CITE_FLD_DEFN]):
+        # type: (Dict, List) -> str
+        """
+        Retrieves a formatted string corresponding to a citation
+
+        :param  cit_values: Field to value mapping for the citation
+        :param  cit_fields: Fields to include
+        :returns the selected citation values as formatted string
+        """
+        cit_str = ""
+        for cit_field in cit_fields:
+            fld_display_value, delim = CitationWB.format_cit_value(cit_values.get(cit_field, None),
+                                                                   cit_field)
+            cit_str += "{}{}".format(fld_display_value, delim)
+        return cit_str
+    ###########################################################################
+
+
+    ###########################################################################
     def format_cit_row(self,
                        cit_row,
                        cit_fields = [CITE_FLD_LBL_VERBOSE, CITE_FLD_CATEGORY,
@@ -523,7 +555,7 @@ class CitationWB(object):
         #
         cit_values = self.get_cit_values(cit_row, fields_to_fill = cit_fields)
         return CitationWB.format_cit_values(cit_values, cit_fields)
-    ###############################################################################
+    ###########################################################################
 
 
     ###########################################################################
@@ -615,21 +647,87 @@ class CitationWB(object):
 
 
     ###########################################################################
+    @staticmethod
+    def find_matches_in_sheet(ws,
+                              search_expr,
+                              fld_name,
+                              do_re_search  = False,
+                              cell_type     = CellType.CT_ALL,
+                              max_matches   = -1):
+        # type: (Worksheet, str/Set(str), str, bool, CellType, int) -> List[Dict]
+        """
+        Finds citation rows matching conditions on a given field
+
+        :param  search_expr:    Search term/s to be matched, converted to a set if
+                                necessary
+        :param  fld_name:       Name of the field to be searched
+        :param  do_re_search:   If True, treat search terms as regular expressions
+        :param  cell_type:      Type of cells to search for
+        :param  max_matches:    Maximum number of matches to return
+        :returns a list of column name to Cell mappings for the matching rows.
+        """
+
+        #
+        # Correct formatting of search_expr
+        #
+        if isinstance(search_expr, str):
+            search_expr = {search_expr}
+
+        #
+        # Add None to allow searching for blank column values if appropriate
+        #
+        if "" in search_expr and not do_re_search:
+            search_expr.add(None)
+
+        #
+        # Build the list of cells in the worksheet matching the search terms
+        #
+        search_col  = get_col_id(ws, fld_name)
+        matching_cells = ws[search_col][1:]
+        if do_re_search:
+            matching_cells  = [cell for cell in matching_cells if cell.value and any(re.search(term, cell.value) for term in search_expr)]
+        else:
+            matching_cells  = [cell for cell in matching_cells if cell.value in search_expr]
+
+        #
+        # Retrieve the corresponding rows
+        #
+        matching_rows = [get_named_row(ws, cell.row) for cell in matching_cells]
+
+        #
+        # Filter based on cell type
+        #
+        if cell_type == CellType.CT_DEFN:
+            matching_rows = [r for r in matching_rows if r[CITE_FLD_DEFN] and r[CITE_FLD_DEFN].style == STYLE_GENERAL]
+        elif cell_type == CellType.CT_REFERRING:
+            matching_rows = [r for r in matching_rows if r[CITE_FLD_DEFN] and r[CITE_FLD_DEFN].style == STYLE_LINK]
+
+        #
+        # Trim the results list to the maximum instances limit
+        #
+        if max_matches > 0:
+            matching_rows = matching_rows[:max_matches]
+
+        return matching_rows
+    ###########################################################################
+
+
+    ###########################################################################
     def find_matches(self,
-                     search_terms,
+                     search_expr,
                      fld_name,
-                     do_re_search       = False,
-                     cell_type          = CellType.CT_ALL,
-                     max_instances      = -1):
+                     do_re_search   = False,
+                     cell_type      = CellType.CT_ALL,
+                     max_matches    = -1):
         # type: (Workbook, str/List[str], str, bool, CellType, int) -> List[Dict]
         """
         Finds citation rows matching conditions on a given column.
 
-        :param  search_terms:   Search term/s to be matched
+        :param  search_expr:    Search term/s to be matched
         :param  fld_name:       Name of the field to be searched
         :param  do_re_search:   If True, treat search terms as regular expressions
         :param  cell_type:      Type of cells to search for
-        :param  max_instances:  Maximum number of matched citations to return
+        :param  max_matches:    Maximum number of matched citations to return
         :returns a list of column name to Cell mappings for the matching rows.
         """
         wb = self.wb
@@ -643,31 +741,31 @@ class CitationWB(object):
         # Perform search over all citation sheets
         #
         citation_sheets = self.get_citation_sheets()
-        max_ws_instances = max_instances
+        max_ws_matches = max_matches
         for ws in citation_sheets:
             #
-            # Check whether the maximum instances limit has been reached
+            # Check whether the maximum matches limit has been reached
             #
-            if max_ws_instances == 0:
+            if max_ws_matches == 0:
                 break
 
             #
             # Find matches in the latest worksheet
             #
-            ws_matches = find_matches_in_sheet(ws,
-                                               search_terms,
-                                               fld_name,
-                                               do_re_search,
-                                               cell_type,
-                                               max_ws_instances)
+            ws_matches = CitationWB.find_matches_in_sheet(ws,
+                                                          search_expr,
+                                                          fld_name,
+                                                          do_re_search,
+                                                          cell_type,
+                                                          max_ws_matches)
             if len(ws_matches) > 0:
                 #
                 # Add matches to return list and update the next worksheet's limit
                 #
                 matching_rows += ws_matches
 
-                if max_instances > 0:
-                    max_ws_instances -= len(ws_matches)
+                if max_matches > 0:
+                    max_ws_matches -= len(ws_matches)
 
         return matching_rows
     ###########################################################################
@@ -680,8 +778,7 @@ class CitationWB(object):
         # type (str, CellType) -> Dict
         """
         Find matches in the workbook for search terms specified in a JSON file.
-        For search terms with no hits in the citation workbook, revert to a
-        dictionary lookup.
+        For search terms with no hits, revert to a dictionary lookup.
 
         :param  search_terms_filename:  Name of the file containing the terms
         :param  cell_type:              Type of cells to search for
@@ -708,12 +805,12 @@ class CitationWB(object):
                     search_value = search_term.get(MSEARCH_TERM_VALUE)
                     search_field = search_term.get(MSEARCH_TERM_FIELD, CITE_FLD_PHRASE)
                     use_re_search = search_term.get(MSEARCH_TERM_USE_RE, False)
-                    citation_matches = self.find_matches(search_value,
-                                                         search_field,
-                                                         use_re_search,
-                                                         max_instances = 1)
-                    if len(citation_matches) == 1:
-                        cit_values = self.get_cit_values(citation_matches[0], CITE_FLDS)
+                    cit_matches = self.find_matches(search_value,
+                                                    search_field,
+                                                    use_re_search,
+                                                    max_matches = 1)
+                    if len(cit_matches) == 1:
+                        cit_values = self.get_cit_values(cit_matches[0], CITE_FLDS)
                         group_matches.append(cit_values)
                     else:
                         #
@@ -806,30 +903,30 @@ class CitationWB(object):
 
     ###########################################################################
     def display_matches(self,
-                        search_terms,
+                        search_expr,
                         fld_name        = CITE_FLD_PHRASE,
                         do_re_search    = False,
                         cell_type       = CellType.CT_DEFN,
-                        max_instances   = -1,
+                        max_matches     = -1,
                         cit_fields      = [CITE_FLD_LBL_VERBOSE, CITE_FLD_CATEGORY,
                                            CITE_FLD_PHRASE, CITE_FLD_JYUTPING,
                                            CITE_FLD_DEFN]):
-        # type: (str/List(str), str, bool, CellType, int, List[str]) -> None
+        # type: (str/Set(str), str, bool, CellType, int, List[str]) -> None
         """
         Displays the matches for one or more search terms in the citations workbook
 
-        :param  search_terms:   Search term/s to be matched
+        :param  search_expr:    Search term/s to be matched
         :param  fld_name:       Name of the field to be searched
         :param  do_re_search:   If True, treat search terms as regular expressions
         :param  cell_type:      Type of cells to search for
-        :param  max_instances:  Maximum number of matched cells to return
+        :param  max_matches:  Maximum number of matched cells to return
         :param  cit_fields:     Fields to display
         :returns nothing
         """
-        matching_rows = self.find_matches(search_terms, fld_name, do_re_search, cell_type, max_instances)
+        matching_rows = self.find_matches(search_expr, fld_name, do_re_search, cell_type, max_matches)
         cit_values_list = [self.get_cit_values(cit_row, cit_fields)
                                for cit_row
-                               in self.find_matches(search_terms, fld_name, do_re_search, cell_type, max_instances)]
+                               in self.find_matches(search_expr, fld_name, do_re_search, cell_type, max_matches)]
         self.display_cit_values_list(cit_values_list, cit_fields)
     ###########################################################################
 
@@ -895,18 +992,18 @@ class CitationWB(object):
     ############################################################################
 
 
-    ############################################################################
+    ###########################################################################
     def get_refs_for_ws_phrases(self,
                                 ws_name,
                                 overwrite,
                                 audit_only):
-        # type: (Workbook, str, bool, bool) -> None
+        # type: (str, bool, bool) -> None
         """
-        Fills in the references for the phrase column in a citation worksheet.
+        Fills in the references for the phrases in a citation worksheet.
         This requires building a reference to the first occurrence of each phrase
         in the workbook.
 
-        :param  ws_name:    A citation name
+        :param  ws_name:    A citation worksheet name
         :param  overwrite:  If True, overwrite any existing content in referring
                             cells if these don't already refer to the referenced
                             cells
@@ -923,7 +1020,7 @@ class CitationWB(object):
                 #
                 # Find the first cell to define the phrase
                 #
-                referenced_rows = self.find_matches([phrase_cell.value], CITE_FLD_PHRASE, False, CellType.CT_DEFN, 1)
+                referenced_rows = self.find_matches(phrase_cell.value, CITE_FLD_PHRASE, False, CellType.CT_DEFN, 1)
                 referenced_row  = referenced_rows[0] if len(referenced_rows) > 0 else None
                 referenced_cell = referenced_row[CITE_FLD_PHRASE] if referenced_row else None
 
@@ -1004,129 +1101,6 @@ class CitationWB(object):
 
 
 ###############################################################################
-def assign_style(cell):
-    # type: (Cell) -> None
-    """
-    Assigns the appropriate style to a citation worksheet cell
-
-    :param  cell    The cell to be styled
-    :returns: Nothing
-    """
-    cell.style = STYLE_GENERAL if cell.hyperlink is None else STYLE_LINK
-###############################################################################
-
-
-###############################################################################
-def style_citation_sheet(ws):
-    # type: (Cell) -> None
-    """
-    Assigns the appropriate style to all cells in a citation worksheet
-
-    :param  ws  The worksheet
-    :returns: Nothing
-    """
-    for row in ws.iter_rows():
-        for cell in row:
-            assign_style(cell)
-###############################################################################
-
-
-###############################################################################
-# TODO: STATIC METHOD?
-def find_matches_in_sheet(ws,
-                          search_terms,
-                          fld_name,
-                          do_re_search       = False,
-                          cell_type          = CellType.CT_ALL,
-                          max_instances      = -1):
-    # type: (Worksheet, str/List[str], str, bool, CellType, int) -> List[Dict]
-    """
-    Finds citation rows matching conditions on a given column.
-
-    :param  wb:             A citation worksheet
-    :param  search_terms:   Search term/s to be matched, converted to a list if
-                            necessary
-    :param  fld_name:       Name of the field to be searched
-    :param  do_re_search:   If True, treat search terms as regular expressions
-    :param  cell_type:      Type of cells to search for
-    :param  max_instances:  Maximum number of matched cells to return
-    :returns a list of column name to Cell mappings for the matching rows.
-    """
-
-    #
-    # Correct formatting of search_terms
-    #
-    if isinstance(search_terms, str):
-        search_terms = [search_terms]
-
-    #
-    # Add None to allow searching for blank column values if appropriate
-    #
-    if "" in search_terms and None not in search_terms:
-        search_terms.append(None)
-
-    #
-    # Build the list of cells in the worksheet matching the search terms
-    #
-    search_col  = get_col_id(ws, fld_name)
-    matching_cells = ws[search_col][1:]
-    if do_re_search:
-        matching_cells  = [cell for cell in matching_cells if cell.value and any(re.search(term, cell.value) for term in search_terms)]
-    else:
-        matching_cells  = [cell for cell in matching_cells if cell.value in search_terms]
-
-    #
-    # Retrieve the corresponding rows
-    #
-    matching_rows = [get_named_row(ws, cell.row) for cell in matching_cells]
-
-    #
-    # Filter based on cell type
-    #
-    if cell_type == CellType.CT_DEFN:
-        matching_rows = [r for r in matching_rows if r[CITE_FLD_DEFN] and r[CITE_FLD_DEFN].style == STYLE_GENERAL]
-    elif cell_type == CellType.CT_REFERRING:
-        matching_rows = [r for r in matching_rows if r[CITE_FLD_DEFN] and r[CITE_FLD_DEFN].style == STYLE_LINK]
-
-    #
-    # Trim the results list to the maximum instances limit
-    #
-    if (max_instances > 0):
-        matching_rows = matching_rows[:max_instances]
-
-    return matching_rows
-###############################################################################
-
-
-
-###############################################################################
-def show_definedname_cells(wb):
-    # type: (Workbook) -> None
-    """
-    Displays the definition of workbook cells associated with a defined name.
-
-    :param  wb: A citation workbook
-    :returns: Nothing
-    """
-    defined_name_dict = dict()
-    cs_names = [cs_name for cs_name in CITATION_SHEETS if cs_name in wb.sheetnames]
-    for cs_name in cs_names:
-        defined_name_dict[cs_name] = list()
-
-    defined_name_locations = [dn.attr_text for dn in wb.defined_names.definedName]
-    for dn_loc in defined_name_locations:
-        ws_name, cell_loc = dn_loc.split('!')
-        if not cell_loc in defined_name_dict[ws_name]:
-            defined_name_dict[ws_name].append(cell_loc)
-
-    for cs_name in cs_names:
-        ws = wb.get_sheet_by_name(cs_name)
-        for cell_loc in defined_name_dict[cs_name]:
-            print(format_cit_row(get_named_row(ws, ws[cell_loc].row)))
-###############################################################################
-
-
-###############################################################################
 def def_specified(cell):
     # type (Cell) -> bool
     """
@@ -1156,7 +1130,7 @@ def find_citations_with_no_def(ws,
                             if 0 no upper limit is imposed on the phrase length
     :returns the list of citation rows with no definition
     """
-    citation_rows = find_matches_in_sheet(ws, "", CITE_FLD_DEFN)
+    citation_rows = CitationWB.find_matches_in_sheet(ws, "", CITE_FLD_DEFN)
     if max_num_chars > 0:
         citation_rows = [row for row in citation_rows if row[CITE_FLD_PHRASE].value and
                                                          len(row[CITE_FLD_PHRASE].value) >= min_num_chars and
@@ -1274,20 +1248,23 @@ if __name__ == "__main__":
 #   notes_wb = load_workbook(SOURCE_FILE)
 
     citewb = CitationWB()
-    citewb.fill_in_last_sheet(True)
+#   citewb.fill_in_last_sheet(True)
 #   for sheet_name in citewb.citation_sheet_names:
 #       citewb.fill_in_sheet(sheet_name, True)
 #   citewb.save_changes()
 
-    citewb.display_matches_for_file("confounds.match",
-                                    cit_fields = CITE_FLDS)
+#   citewb.display_matches_for_file("confounds.match",
+#                                   cit_fields = CITE_FLDS)
 
+#   citewb.display_matches("囉", cit_fields = [CITE_FLD_LBL_VERBOSE, CITE_FLD_PHRASE, CITE_FLD_CITE_TEXT, CITE_FLD_DEFN], cell_type = CellType.CT_ALL,
+#           max_matches = 3)
+#   citewb.display_matches("", CITE_FLD_TOPIC, do_re_search = True, cit_fields = CITE_FLDS)
 #   citewb.display_matches("..武", CITE_FLD_TOPIC, do_re_search = True, cit_fields = CITE_FLDS)
-    citewb.display_matches("囉", cit_fields = CITE_FLDS)
+#   citewb.display_matches("囉", cit_fields = CITE_FLDS)
 #   citewb.display_matches("..武", CITE_FLD_TOPIC, do_re_search = True, cit_fields = [CITE_FLD_LBL_VERBOSE, CITE_FLD_CITE_TEXT, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
 #   citewb.display_matches("..武", CITE_FLD_TOPIC, do_re_search = True, cit_fields = [CITE_FLD_CITE_TEXT, CITE_FLD_LBL_VERBOSE, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
 
-    citewb.display_multiply_used_defns()
+#   citewb.display_multiply_used_defns()
 
     if  sys.version_info.major ==  2:
         show_char_decomposition('彆')
