@@ -79,9 +79,9 @@ CITE_FLD_PHRASE         = "字詞"                # Retrieved
 CITE_FLD_JYUTPING       = "粵拼"                # Retrieved
 CITE_FLD_DEFN           = "定義"                # Retrieved/generated
 CITE_FLD_ID             = "cite_id"             # Generated
-CITE_FLD_LBL_SHORT      = "cite_label_short"    # Generated
-CITE_FLD_LBL_VERBOSE    = "cite_label_verbose"  # Generated
-CITE_FLD_COUNT          = "citation_count"      # Generated
+CITE_FLD_LBL_SHORT      = "cit_label_short"     # Generated
+CITE_FLD_LBL_VERBOSE    = "cit_label_verbose"   # Generated
+CITE_FLD_COUNT          = "cit_count"           # Generated
 
 #
 # Get a list of all citation fields
@@ -278,7 +278,7 @@ def style_cell(cell):
 
 
 ###############################################################################
-def style_citation_sheet(ws):
+def style_cit_sheet(ws):
     # type: (Cell) -> None
     """
     Assigns the appropriate style to all cells in a citation worksheet
@@ -298,17 +298,18 @@ def style_citation_sheet(ws):
 class CitationWB(object):
     ###########################################################################
     def __init__(self,
-                 source_file            = SOURCE_FILE,
-                 citation_sheet_names   = CITATION_SHEETS):
+                 src_file           = SOURCE_FILE,
+                 cit_sheet_names    = CITATION_SHEETS):
         # type: (str, List) -> CitationWB
         """
         Citation workbook constructor
 
-        :param  source_file:            Path to the source spreadsheet file
-        :param  citation_sheet_names:   Citation worksheet names
+        :param  src_file:           Path to the source spreadsheet file
+        :param  cit_sheet_names:    Potential citation worksheet names
+                                    (some may not yet be created/filled in)
         """
-        self.source_file = source_file
-        self.citation_sheet_names = citation_sheet_names
+        self.src_file = src_file
+        self.cit_sheet_names = cit_sheet_names
         self.wb = None
         self.wb_links = None
         self.reload()
@@ -323,7 +324,7 @@ class CitationWB(object):
         if self.wb:
             self.wb.close()
             self.wb_links = None
-        self.wb = load_workbook(self.source_file)
+        self.wb = load_workbook(self.src_file)
     ###########################################################################
 
 
@@ -340,16 +341,26 @@ class CitationWB(object):
 
 
     ###########################################################################
-    def get_citation_sheets(self):
+    def get_valid_cit_sheet_names(self):
+        # type: () -> List[Str]
+        """
+        Retrieves the names of current (existent!) citation worksheets
+
+        :returns a list of the worksheet names
+        """
+        return [ws_name for ws_name in self.cit_sheet_names if ws_name in self.wb.sheetnames]
+    ###########################################################################
+
+
+    ###########################################################################
+    def get_cit_sheets(self):
         # type: () -> List[Worksheet]
         """
         Retrieves the workbook's citation worksheets
 
         :returns a list of the citation worksheets
         """
-        return [self.wb.get_sheet_by_name(ws_name) for ws_name
-                    in self.citation_sheet_names
-                    if ws_name in self.wb.sheetnames]
+        return [self.wb.get_sheet_by_name(ws_name) for ws_name in self.get_valid_cit_sheet_names()]
     ###########################################################################
 
 
@@ -383,7 +394,7 @@ class CitationWB(object):
             # Build the list of links across all citation worksheets
             #
             self.wb_links = list()
-            for ws in self.get_citation_sheets():
+            for ws in self.get_cit_sheets():
                 self.wb_links.extend(CitationWB.get_defn_links(ws))
 
         #
@@ -401,8 +412,8 @@ class CitationWB(object):
         :param  wb  The workbook
         :returns: Nothing
         """
-        for ws in self.get_citation_sheets():
-            style_citation_sheet(ws)
+        for ws in self.get_cit_sheets():
+            style_cit_sheet(ws)
     ###########################################################################
 
 
@@ -429,6 +440,31 @@ class CitationWB(object):
 
 
     ###########################################################################
+    def get_cit_row_values(self,
+                           ws,
+                           row_number,
+                           fields_to_fill = [CITE_FLD_CHAPTER, \
+                                             CITE_FLD_PAGE, \
+                                             CITE_FLD_LINE, \
+                                             CITE_FLD_LINE_INSTANCE, \
+                                             CITE_FLD_ID, \
+                                             CITE_FLD_LBL_SHORT, \
+                                             CITE_FLD_LBL_VERBOSE]):
+        # type: (Worksheet, int, List[str]) -> Dict
+        """
+        Retrieves a citation row, formatted as field name to value mappings
+
+        :param  ws:             A citation worksheet
+        :param  row_number:     A 1-based row number
+        :param  fields_to_fill: Fields that should be generated/filled in if the
+                                worksheet does not provide a (direct) value
+        :returns a field name to value mapping for the relevant citation row
+        """
+        return self.get_cit_values(get_named_row(ws, cit_row), fields_to_fill)
+    ###########################################################################
+
+
+    ###########################################################################
     def get_cit_values(self,
                        cit_row,
                        fields_to_fill = [CITE_FLD_CHAPTER, \
@@ -438,14 +474,14 @@ class CitationWB(object):
                                          CITE_FLD_ID, \
                                          CITE_FLD_LBL_SHORT, \
                                          CITE_FLD_LBL_VERBOSE]):
-        # type: (Worksheet, int) -> Dict
+        # type: (Dict, int) -> Dict
         """
         Retrieves a citation row's values, formatted as field name to value mappings
 
         :param  cit_row:        The citation row
         :param  fields_to_fill: Fields that should be generated/filled in if the
                                 worksheet does not provide a (direct) value
-        :returns a field name to value for the specified row.
+        :returns a field name to value mapping for the specified row.
         """
         ws          = cit_row[CITE_FLD_PHRASE].parent
         row_number  = cit_row[CITE_FLD_PHRASE].row
@@ -467,6 +503,8 @@ class CitationWB(object):
             cit_values[CITE_FLD_LINE] = cit_line
         if CITE_FLD_LINE_INSTANCE in fields_to_fill:
             cit_values[CITE_FLD_LINE_INSTANCE] = cit_instance
+        if CITE_FLD_CITE_TEXT in fields_to_fill:
+            cit_values[CITE_FLD_CITE_TEXT], _ = find_closest_value(ws, get_col_id(ws, CITE_FLD_CITE_TEXT), row_number)
         if CITE_FLD_ID in fields_to_fill:
             cit_values[CITE_FLD_ID] = cit_id
         if CITE_FLD_LBL_SHORT in fields_to_fill:
@@ -475,18 +513,35 @@ class CitationWB(object):
             cit_values[CITE_FLD_LBL_VERBOSE] = "{}!{}".format(cit_label_short, row_number)
         if CITE_FLD_COUNT in fields_to_fill:
             link_counter = self.get_link_counts()
-            cit_values[CITE_FLD_COUNT] = link_counter[cit_id] + 1
+            if self.get_cit_type(cit_row) == CitType.CT_REFERRING:
+                #
+                # For citations that refer to another (source) citation,
+                # retrieve the source citation's counter
+                #
+                cit_values[CITE_FLD_COUNT] = link_counter[cit_row[CITE_FLD_DEFN].hyperlink.location] + 1
+            elif self.get_cit_type(cit_row) == CitType.CT_DEFN:
+                cit_values[CITE_FLD_COUNT] = link_counter[cit_id] + 1
         if CITE_FLD_DEFN in fields_to_fill:
-            wb  = ws.parent
-            defn_cell = cit_row.get(CITE_FLD_DEFN, None)
-            if defn_cell and defn_cell.hyperlink and \
-               defn_cell.hyperlink.location in wb.defined_names:
-                defn_source_defined_name = list(wb.defined_names[defn_cell.hyperlink.location].destinations)[0]
-                defn_source_ws = wb.get_sheet_by_name(defn_source_defined_name[0])
-                defn_source = defn_source_ws[defn_source_defined_name[1]]
-                defn_source_row = get_named_row(defn_source.parent, defn_source.row)
-                cit_values[CITE_FLD_DEFN] = defn_source_row[CITE_FLD_DEFN].value
-                cit_values[CITE_FLD_JYUTPING] = defn_source_row[CITE_FLD_JYUTPING].value
+            if self.get_cit_type(cit_row) == CitType.CT_REFERRING:
+                #
+                # For citations that refer to another (source) citation,
+                # retrieve the definition and Jyutping value from the
+                # source citation
+                #
+                defn_src_id = cit_row[CITE_FLD_DEFN].hyperlink.location
+
+                #
+                # Extract source citation location from its defined name data
+                # Example destination format: ("十一", "$F$99")
+                #
+                defn_src_locator    = list(self.wb.defined_names[defn_src_id].destinations)[0]
+                defn_src_ws         = self.wb.get_sheet_by_name(defn_src_locator[0])
+                defn_src_row_number = defn_src_locator[1].split("$")[2]
+
+                defn_src_row = get_named_row(defn_src_ws, defn_src_row_number)
+
+                cit_values[CITE_FLD_DEFN] = defn_src_row[CITE_FLD_DEFN].value
+                cit_values[CITE_FLD_JYUTPING] = defn_src_row[CITE_FLD_JYUTPING].value
         return cit_values
     ###########################################################################
 
@@ -788,9 +843,9 @@ class CitationWB(object):
         #
         # Perform search over all citation sheets
         #
-        citation_sheets = self.get_citation_sheets()
+        cit_sheets = self.get_cit_sheets()
         max_ws_matches = max_matches
-        for ws in citation_sheets:
+        for ws in cit_sheets:
             #
             # Check whether the maximum matches limit has been reached
             #
@@ -881,41 +936,34 @@ class CitationWB(object):
 
     ###########################################################################
     def find_cits_by_shape_and_value(self,
-                                        shape,
-                                        value,
-                                        pos):
-        # type (Workbook, str, str, int) -> List[Cell]
+                                     shape,
+                                     value,
+                                     pos):
+        # type (str, str, int) -> List[Dict]
         """
         Finds citations where the cited phrase fits CJK shape conditions
 
         :param  shape:  Ideographic shape to match
         :param  value:  Value to match within the shape
         :param  pos:
-        :returns: list
+        :returns the list of matching citation rows
         """
         matches = list()
 
         cjk = characterlookup.CharacterLookup('T')
-        sheets = self.get_citation_sheets()
+        sheets = self.get_cit_sheets()
         for ws in sheets:
             ws_matches = [get_named_row(ws, row_number) for row_number in range(2, ws.max_row + 1)]
             ws_matches = [row for row in ws_matches if self.get_cit_type(row) == CitType.CT_DEFN]
             ws_matches = [row for row in ws_matches if row[CITE_FLD_PHRASE].value and
                             len(cjk.getDecompositionEntries(row[CITE_FLD_PHRASE].value)) > 0]
 
-#           phrase_cells = [cell for cell in ws[get_col_id(ws, CITE_FLD_PHRASE)]
-#                           if self.get_cit_type(get_named_row(ws, cell.row)) == CitType.CT_DEFN and
-#                           len(cjk.getDecompositionEntries(cell.value)) > 0]
-
             if not shape:
                 radical_index = cjk.getKangxiRadicalIndex(value)
                 ws_matches = [row for row in ws_matches if cjk.getCharacterKangxiRadicalIndex(row[CITE_FLD_PHRASE].value) == radical_index]
-#               matches = [cell for cell in phrase_cells if cjk.getCharacterKangxiRadicalIndex(cell.value) == radical_index]
             else:
                 ws_matches = [row for row in ws_matches if cjk.getDecompositionEntries(row[CITE_FLD_PHRASE].value)[0][0] == shape
                     and cjk.getDecompositionEntries(row[CITE_FLD_PHRASE].value)[0][pos+1][0] == value]
-#               matches = [cell for cell in phrase_cells if cjk.getDecompositionEntries(cell.value)[0][0] == shape
-#                   and cjk.getDecompositionEntries(cell.value)[0][pos+1][0] == value]
 
     #       matches = [cell for cell in phrase_cells
     #                       if def_specified(cell) and
@@ -934,7 +982,6 @@ class CitationWB(object):
             matches.extend(ws_matches)
 
         return [self.get_cit_values(row) for row in matches]
-#       return matches
     ###########################################################################
 
 
@@ -1054,9 +1101,9 @@ class CitationWB(object):
                                 audit_only):
         # type: (str, bool, bool) -> None
         """
-        Fills in the references for the phrases in a citation worksheet.
-        This requires building a reference to the first occurrence of each phrase
-        in the workbook.
+        Fills in the references for the citations in a worksheet.
+        This requires building a reference to the first occurrence of each
+        phrase cited in the workbook.
 
         :param  ws_name:    A citation worksheet name
         :param  overwrite:  If True, overwrite any existing content in referring
@@ -1066,7 +1113,7 @@ class CitationWB(object):
                             without modifying any data
         :returns Nothing
         """
-        if ws_name in self.citation_sheet_names and ws_name in self.wb.sheetnames:
+        if ws_name in self.get_valid_cit_sheet_names():
             ws = self.wb.get_sheet_by_name(ws_name)
             #
             # Iterate through all non-empty phrase cells of the chapter worksheet
@@ -1098,10 +1145,10 @@ class CitationWB(object):
         Fills in the definition (including Jyutping transcription) of a citation
         row.
 
-        :param  cit_row:   A row from a citation worksheet
-        :param  overwrite:      If True, overwrites existing definition information
-        :param  audit_only:     If True, print the definition data without
-                                modifying the citation worksheet
+        :param  cit_row:    A row from a citation worksheet
+        :param  overwrite:  If True, overwrites existing definition information
+        :param  audit_only: If True, print the definition data without
+                            modifying the citation worksheet
         :returns True if definition data was found
         """
 
@@ -1179,34 +1226,30 @@ class CitationWB(object):
                             filled out
         :returns Nothing
         """
-        if ws_name in self.citation_sheet_names and ws_name in self.wb.sheetnames:
+        if ws_name in self.get_valid_cit_sheet_names():
             ws = self.wb.get_sheet_by_name(ws_name)
             self.get_refs_for_ws_phrases(ws_name, overwrite, False)
 
-            citations_with_no_def = list()
+            cits_with_no_def = list()
 
             #
             # Attempt to fill in definitions/Jyutping for single character phrases
             #
-            citations_to_fill = self.find_citations_with_no_def(ws)
-            for citation_row in citations_to_fill:
-                if not CitationWB.fill_defn(citation_row, overwrite, False):
-                    citations_with_no_def.append(citation_row)
+            cits_to_fill = self.find_citations_with_no_def(ws)
+            for cit_row in cits_to_fill:
+                if not CitationWB.fill_defn(cit_row, overwrite, False):
+                    cits_with_no_def.append(self.get_cit_values(cit_row, fields_to_fill = [CITE_FLD_CITE_TEXT, CITE_FLD_LBL_VERBOSE]))
 
             #
             # Repeat for multi-character phrases
             #
-            citations_to_fill = self.find_citations_with_no_def(ws, 2, -1)
-            for citation_row in citations_to_fill:
-                if not CitationWB.fill_defn(citation_row, overwrite, False):
-                    citations_with_no_def.append(citation_row)
+            cits_to_fill = self.find_citations_with_no_def(ws, 2, -1)
+            for cit_row in cits_to_fill:
+                if not CitationWB.fill_defn(cit_row, overwrite, False):
+                    cits_with_no_def.append(self.get_cit_values(cit_row, fields_to_fill = [CITE_FLD_CITE_TEXT, CITE_FLD_LBL_VERBOSE]))
 
             print("Definition still required...")
-            for citation_row in citations_with_no_def:
-                phrase_cell         = citation_row[CITE_FLD_PHRASE]
-                citation_value, _   = find_closest_value(ws, get_col_id(ws, CITE_FLD_CITE_TEXT), phrase_cell.row)
-                print("{}:\t{}".format(phrase_cell.row, phrase_cell.value))
-                print("\t\t{}".format(citation_value))
+            self.display_cit_values_list(cits_with_no_def, [CITE_FLD_LBL_VERBOSE, CITE_FLD_PHRASE, CITE_FLD_CITE_TEXT], "\t")
     ###########################################################################
 
 
@@ -1222,8 +1265,7 @@ class CitationWB(object):
                             to be filled out
         :returns Nothing
         """
-        valid_citation_sheet_names = [s for s in self.citation_sheet_names if s in self.wb.sheetnames]
-        last_sheet_name = valid_citation_sheet_names[-1]
+        last_sheet_name = self.get_valid_cit_sheet_names()[-1]
 
         self.fill_in_sheet(last_sheet_name, overwrite)
 ###############################################################################
@@ -1275,11 +1317,10 @@ def main():
 
 if __name__ == "__main__":
     main()
-#   notes_wb = load_workbook(SOURCE_FILE)
 
     citewb = CitationWB()
 #   citewb.fill_in_last_sheet(True)
-#   for sheet_name in citewb.citation_sheet_names:
+#   for sheet_name in citewb.cit_sheet_names:
 #       citewb.fill_in_sheet(sheet_name, True)
 #   citewb.save_changes()
 
