@@ -99,15 +99,15 @@ CiteFldToDictFld = {
 
 
 ###############################################################################
-# Cell types enum
+# Citation types enum
 ###############################################################################
-CellType = IntEnum('CellType',  'CT_NONE        \
-                                 CT_ALL         \
-                                 CT_DEFN        \
-                                 CT_REFERRING   \
-                                 CT_COUNT',
+CitType = IntEnum('CitType',  'CT_NONE        \
+                               CT_ALL         \
+                               CT_DEFN        \
+                               CT_REFERRING   \
+                               CT_COUNT',
 
-                                 start = -1)
+                               start = -1)
 ###############################################################################
 
 ##############################
@@ -265,7 +265,7 @@ def get_named_row(ws,
 
 
 ###############################################################################
-def assign_style(cell):
+def style_cell(cell):
     # type: (Cell) -> None
     """
     Assigns the appropriate style to a citation worksheet cell
@@ -288,7 +288,7 @@ def style_citation_sheet(ws):
     """
     for row in ws.iter_rows():
         for cell in row:
-            assign_style(cell)
+            style_cell(cell)
 ###############################################################################
 
 
@@ -407,6 +407,28 @@ class CitationWB(object):
 
 
     ###########################################################################
+    def get_cit_type(self,
+                     cit_row):
+        # type: (Dict) -> CitType
+        """
+        Identifies the a citation row's type
+
+        :param  cit_row:    The citation row
+        :returns the citation's type
+        """
+        cit_type = CitType.CT_NONE
+        defn_cell = cit_row[CITE_FLD_DEFN] if cit_row[CITE_FLD_DEFN] else None
+        if defn_cell:
+            if defn_cell.hyperlink and \
+               defn_cell.hyperlink.location in self.wb.defined_names:
+                cit_type = CitType.CT_REFERRING
+            else:
+                cit_type = CitType.CT_DEFN
+        return cit_type
+    ###########################################################################
+
+
+    ###########################################################################
     def get_cit_values(self,
                        cit_row,
                        fields_to_fill = [CITE_FLD_CHAPTER, \
@@ -465,7 +487,6 @@ class CitationWB(object):
                 defn_source_row = get_named_row(defn_source.parent, defn_source.row)
                 cit_values[CITE_FLD_DEFN] = defn_source_row[CITE_FLD_DEFN].value
                 cit_values[CITE_FLD_JYUTPING] = defn_source_row[CITE_FLD_JYUTPING].value
-
         return cit_values
     ###########################################################################
 
@@ -634,8 +655,8 @@ class CitationWB(object):
                 jyutping_cell.value = None
 
                 # Assign styles
-                assign_style(referring_cell)
-                assign_style(jyutping_cell)
+                style_cell(referring_cell)
+                style_cell(jyutping_cell)
 
         if len(audit_log) != 0:
             print("{}!{} ({}) --> {}!{}".format(
@@ -647,14 +668,14 @@ class CitationWB(object):
 
 
     ###########################################################################
-    @staticmethod
-    def find_matches_in_sheet(ws,
+    def find_matches_in_sheet(self,
+                              ws,
                               search_expr,
                               fld_name,
                               do_re_search  = False,
-                              cell_type     = CellType.CT_ALL,
+                              cit_type      = CitType.CT_ALL,
                               max_matches   = -1):
-        # type: (Worksheet, str/Set(str), str, bool, CellType, int) -> List[Dict]
+        # type: (Worksheet, str/Set(str), str, bool, CitType, int) -> List[Dict]
         """
         Finds citation rows matching conditions on a given field
 
@@ -662,7 +683,7 @@ class CitationWB(object):
                                 necessary
         :param  fld_name:       Name of the field to be searched
         :param  do_re_search:   If True, treat search terms as regular expressions
-        :param  cell_type:      Type of cells to search for
+        :param  cit_type:       Type of citations to search for
         :param  max_matches:    Maximum number of matches to return
         :returns a list of column name to Cell mappings for the matching rows.
         """
@@ -697,10 +718,8 @@ class CitationWB(object):
         #
         # Filter based on cell type
         #
-        if cell_type == CellType.CT_DEFN:
-            matching_rows = [r for r in matching_rows if r[CITE_FLD_DEFN] and r[CITE_FLD_DEFN].style == STYLE_GENERAL]
-        elif cell_type == CellType.CT_REFERRING:
-            matching_rows = [r for r in matching_rows if r[CITE_FLD_DEFN] and r[CITE_FLD_DEFN].style == STYLE_LINK]
+        if cit_type != CitType.CT_ALL:
+            matching_rows = [r for r in matching_rows if self.get_cit_type(r) == cit_type]
 
         #
         # Trim the results list to the maximum instances limit
@@ -713,20 +732,49 @@ class CitationWB(object):
 
 
     ###########################################################################
+    def find_citations_with_no_def(self,
+                                   ws,
+                                   min_num_chars = 1,
+                                   max_num_chars = 1):
+        # type (Worksheet, int, int) -> List[Dict]
+        """
+        Finds citation rows with no associated definition
+
+        :param ws:              A citation worksheet
+        :param min_num_chars:   Minimum number of characters in the phrase
+        :param max_num_chars:   Maximum number of characters in the phrase,
+                                if 0 no upper limit is imposed on the phrase length
+        :returns the list of citation rows with no definition
+        """
+        cit_rows = self.find_matches_in_sheet(ws, "", CITE_FLD_DEFN)
+        if max_num_chars > 0:
+            cit_rows = [row for row in cit_rows
+                            if row[CITE_FLD_PHRASE].value and
+                               len(row[CITE_FLD_PHRASE].value) >= min_num_chars and
+                               len(row[CITE_FLD_PHRASE].value) <= max_num_chars]
+        else:
+            cit_rows = [row for row in cit_rows
+                            if row[CITE_FLD_PHRASE].value and
+                               len(row[CITE_FLD_PHRASE].value) >= min_num_chars]
+        return cit_rows
+    ###########################################################################
+
+
+    ###########################################################################
     def find_matches(self,
                      search_expr,
                      fld_name,
                      do_re_search   = False,
-                     cell_type      = CellType.CT_ALL,
+                     cit_type       = CitType.CT_ALL,
                      max_matches    = -1):
-        # type: (Workbook, str/List[str], str, bool, CellType, int) -> List[Dict]
+        # type: (Workbook, str/List[str], str, bool, CitType, int) -> List[Dict]
         """
         Finds citation rows matching conditions on a given column.
 
         :param  search_expr:    Search term/s to be matched
         :param  fld_name:       Name of the field to be searched
         :param  do_re_search:   If True, treat search terms as regular expressions
-        :param  cell_type:      Type of cells to search for
+        :param  cit_type:       Type of citations to search for
         :param  max_matches:    Maximum number of matched citations to return
         :returns a list of column name to Cell mappings for the matching rows.
         """
@@ -752,12 +800,12 @@ class CitationWB(object):
             #
             # Find matches in the latest worksheet
             #
-            ws_matches = CitationWB.find_matches_in_sheet(ws,
-                                                          search_expr,
-                                                          fld_name,
-                                                          do_re_search,
-                                                          cell_type,
-                                                          max_ws_matches)
+            ws_matches = self.find_matches_in_sheet(ws,
+                                                    search_expr,
+                                                    fld_name,
+                                                    do_re_search,
+                                                    cit_type,
+                                                    max_ws_matches)
             if len(ws_matches) > 0:
                 #
                 # Add matches to return list and update the next worksheet's limit
@@ -774,14 +822,14 @@ class CitationWB(object):
     ###########################################################################
     def find_matches_for_file(self,
                               search_terms_filename,
-                              cell_type                 = CellType.CT_DEFN):
-        # type (str, CellType) -> Dict
+                              cit_type                 = CitType.CT_DEFN):
+        # type (str, CitType) -> Dict
         """
         Find matches in the workbook for search terms specified in a JSON file.
         For search terms with no hits, revert to a dictionary lookup.
 
         :param  search_terms_filename:  Name of the file containing the terms
-        :param  cell_type:              Type of cells to search for
+        :param  cit_type:               Type of citations to search for
         :returns a dictionary mapping search groups (provided by the JSON file)
                  to search results
         """
@@ -832,35 +880,42 @@ class CitationWB(object):
 
 
     ###########################################################################
-    def find_cells_with_shape_and_value(self,
+    def find_cits_by_shape_and_value(self,
                                         shape,
                                         value,
                                         pos):
         # type (Workbook, str, str, int) -> List[Cell]
         """
-        Finds phrase cells in a citation workbook that fit CJK shape conditions
+        Finds citations where the cited phrase fits CJK shape conditions
 
         :param  shape:  Ideographic shape to match
         :param  value:  Value to match within the shape
         :param  pos:
         :returns: list
         """
-        matching_cells = list()
+        matches = list()
 
         cjk = characterlookup.CharacterLookup('T')
         sheets = self.get_citation_sheets()
         for ws in sheets:
-            matches = []
+            ws_matches = [get_named_row(ws, row_number) for row_number in range(2, ws.max_row + 1)]
+            ws_matches = [row for row in ws_matches if self.get_cit_type(row) == CitType.CT_DEFN]
+            ws_matches = [row for row in ws_matches if row[CITE_FLD_PHRASE].value and
+                            len(cjk.getDecompositionEntries(row[CITE_FLD_PHRASE].value)) > 0]
 
-            phrase_cells = [cell for cell in ws[get_col_id(ws, CITE_FLD_PHRASE)]
-                            if def_specified(cell) and len(cjk.getDecompositionEntries(cell.value)) > 0]
+#           phrase_cells = [cell for cell in ws[get_col_id(ws, CITE_FLD_PHRASE)]
+#                           if self.get_cit_type(get_named_row(ws, cell.row)) == CitType.CT_DEFN and
+#                           len(cjk.getDecompositionEntries(cell.value)) > 0]
 
             if not shape:
                 radical_index = cjk.getKangxiRadicalIndex(value)
-                matches = [cell for cell in phrase_cells if cjk.getCharacterKangxiRadicalIndex(cell.value) == radical_index]
+                ws_matches = [row for row in ws_matches if cjk.getCharacterKangxiRadicalIndex(row[CITE_FLD_PHRASE].value) == radical_index]
+#               matches = [cell for cell in phrase_cells if cjk.getCharacterKangxiRadicalIndex(cell.value) == radical_index]
             else:
-                matches = [cell for cell in phrase_cells if cjk.getDecompositionEntries(cell.value)[0][0] == shape
-                    and cjk.getDecompositionEntries(cell.value)[0][pos+1][0] == value]
+                ws_matches = [row for row in ws_matches if cjk.getDecompositionEntries(row[CITE_FLD_PHRASE].value)[0][0] == shape
+                    and cjk.getDecompositionEntries(row[CITE_FLD_PHRASE].value)[0][pos+1][0] == value]
+#               matches = [cell for cell in phrase_cells if cjk.getDecompositionEntries(cell.value)[0][0] == shape
+#                   and cjk.getDecompositionEntries(cell.value)[0][pos+1][0] == value]
 
     #       matches = [cell for cell in phrase_cells
     #                       if def_specified(cell) and
@@ -876,9 +931,10 @@ class CitationWB(object):
                     #]
             #for decomp in decomps:
                 #print(decomp)
-            matching_cells.extend(matches)
+            matches.extend(ws_matches)
 
-        return matching_cells
+        return [self.get_cit_values(row) for row in matches]
+#       return matches
     ###########################################################################
 
 
@@ -906,27 +962,26 @@ class CitationWB(object):
                         search_expr,
                         fld_name        = CITE_FLD_PHRASE,
                         do_re_search    = False,
-                        cell_type       = CellType.CT_DEFN,
+                        cit_type        = CitType.CT_DEFN,
                         max_matches     = -1,
                         cit_fields      = [CITE_FLD_LBL_VERBOSE, CITE_FLD_CATEGORY,
                                            CITE_FLD_PHRASE, CITE_FLD_JYUTPING,
                                            CITE_FLD_DEFN]):
-        # type: (str/Set(str), str, bool, CellType, int, List[str]) -> None
+        # type: (str/Set(str), str, bool, CitType, int, List[str]) -> None
         """
         Displays the matches for one or more search terms in the citations workbook
 
         :param  search_expr:    Search term/s to be matched
         :param  fld_name:       Name of the field to be searched
         :param  do_re_search:   If True, treat search terms as regular expressions
-        :param  cell_type:      Type of cells to search for
-        :param  max_matches:  Maximum number of matched cells to return
+        :param  cit_type:       Type of citations to search for
+        :param  max_matches:    Maximum number of matched cells to return
         :param  cit_fields:     Fields to display
         :returns nothing
         """
-        matching_rows = self.find_matches(search_expr, fld_name, do_re_search, cell_type, max_matches)
         cit_values_list = [self.get_cit_values(cit_row, cit_fields)
                                for cit_row
-                               in self.find_matches(search_expr, fld_name, do_re_search, cell_type, max_matches)]
+                               in self.find_matches(search_expr, fld_name, do_re_search, cit_type, max_matches)]
         self.display_cit_values_list(cit_values_list, cit_fields)
     ###########################################################################
 
@@ -934,14 +989,14 @@ class CitationWB(object):
     ###############################################################################
     def display_matches_for_file(self,
                                  search_terms_filename,
-                                 cell_type              = CellType.CT_DEFN,
+                                 cit_type               = CitType.CT_DEFN,
                                  cit_fields             = [CITE_FLD_LBL_VERBOSE,
                                                            CITE_FLD_COUNT,
                                                            CITE_FLD_CATEGORY,
                                                            CITE_FLD_PHRASE,
                                                            CITE_FLD_JYUTPING,
                                                            CITE_FLD_DEFN]):
-        # type (str, bool, str, CellType, List[str], bool) -> None
+        # type (str, bool, str, CitType, List[str], bool) -> None
         """
         Find and display matches in the workbook for search terms specified in
         a JSON file.
@@ -949,11 +1004,11 @@ class CitationWB(object):
         lookup.
 
         :param  search_terms_filename:  Name of the file containing the terms
-        :param  cell_type:              Type of cells to search for
+        :param  cit_type:               Type of citations to search for
         :param  cit_fields:             Citation fields to show
         :returns Nothing
         """
-        file_matches = self.find_matches_for_file(search_terms_filename, cell_type)
+        file_matches = self.find_matches_for_file(search_terms_filename, cit_type)
         for search_name, citations in file_matches.items():
             print(search_name)
             self.display_cit_values_list(citations, cit_fields, "\t")
@@ -1020,7 +1075,7 @@ class CitationWB(object):
                 #
                 # Find the first cell to define the phrase
                 #
-                referenced_rows = self.find_matches(phrase_cell.value, CITE_FLD_PHRASE, False, CellType.CT_DEFN, 1)
+                referenced_rows = self.find_matches(phrase_cell.value, CITE_FLD_PHRASE, False, CitType.CT_DEFN, 1)
                 referenced_row  = referenced_rows[0] if len(referenced_rows) > 0 else None
                 referenced_cell = referenced_row[CITE_FLD_PHRASE] if referenced_row else None
 
@@ -1030,6 +1085,81 @@ class CitationWB(object):
                     #
                     referring_row = get_named_row(ws, phrase_cell.row)
                     self.build_reference(referenced_row, referring_row, overwrite, audit_only)
+    ###########################################################################
+
+
+    ###########################################################################
+    @staticmethod
+    def fill_defn(cit_row,
+                  overwrite = False,
+                  audit_only = False):
+        # type: (Dict, bool, bool) -> bool
+        """
+        Fills in the definition (including Jyutping transcription) of a citation
+        row.
+
+        :param  cit_row:   A row from a citation worksheet
+        :param  overwrite:      If True, overwrites existing definition information
+        :param  audit_only:     If True, print the definition data without
+                                modifying the citation worksheet
+        :returns True if definition data was found
+        """
+
+        #
+        # Check for the existence of a valid phrase cell before proceeding
+        #
+        phrase_cell = cit_row[CITE_FLD_PHRASE]
+        if not phrase_cell or not phrase_cell.value:
+            return False
+
+        #
+        # Retrieve the worksheet and row via the phrase_cell
+        #
+        ws          = phrase_cell.parent
+        row_number  = phrase_cell.row
+
+        INTRA_DEF_SEP   = ", "
+        INTER_DEF_SEP   = ";\n"
+
+        jsonDecoder = json.JSONDecoder()
+
+        #
+        # Each search result bundles up a list of English definitions and
+        # Jyutping transcriptions corresponding to the phrase
+        #
+        dict_search_res = canto_dict.search_dict(phrase_cell.value)
+        defn_vals = list()
+        jyutping_vals = list()
+        for search_res in dict_search_res:
+            #
+            # Generate English and Jyutping strings
+            #
+            defn_list = jsonDecoder.decode(search_res[ccdict.DE_ENGLISH])
+            defn_list = list(filter(None, defn_list))
+            if len(defn_list) != 0:
+                defn_vals.append(INTRA_DEF_SEP.join(defn_list))
+            jyutping_list = jsonDecoder.decode(search_res[ccdict.DE_JYUTPING])
+            jyutping_list = list(filter(None, jyutping_list))
+            if len(jyutping_list) == 0:
+                jyutping_list.append("?")
+            jyutping_vals.append(INTRA_DEF_SEP.join(jyutping_list))
+
+        jyut_cell = cit_row[CITE_FLD_JYUTPING]
+        defn_cell = cit_row[CITE_FLD_DEFN]
+
+        print("{}:\t{}".format(phrase_cell.row, phrase_cell.value))
+        print(INTER_DEF_SEP.join(["\t{}".format(jyutping) for jyutping in jyutping_vals]))
+        print(INTER_DEF_SEP.join(["\t{}".format(defn) for defn in defn_vals]))
+
+        if not audit_only:
+            if not jyut_cell.value or overwrite:
+                jyut_cell.value = INTER_DEF_SEP.join(jyutping_vals)
+                style_cell(jyut_cell)
+            if not defn_cell.value or overwrite:
+                defn_cell.value = INTER_DEF_SEP.join(defn_vals)
+                style_cell(defn_cell)
+
+        return len(defn_vals) > 0 or len(jyutping_vals) > 0
     ###########################################################################
 
 
@@ -1058,17 +1188,17 @@ class CitationWB(object):
             #
             # Attempt to fill in definitions/Jyutping for single character phrases
             #
-            citations_to_fill = find_citations_with_no_def(ws)
+            citations_to_fill = self.find_citations_with_no_def(ws)
             for citation_row in citations_to_fill:
-                if not fill_defn(citation_row, overwrite, False):
+                if not CitationWB.fill_defn(citation_row, overwrite, False):
                     citations_with_no_def.append(citation_row)
 
             #
             # Repeat for multi-character phrases
             #
-            citations_to_fill = find_citations_with_no_def(ws, 2, -1)
+            citations_to_fill = self.find_citations_with_no_def(ws, 2, -1)
             for citation_row in citations_to_fill:
-                if not fill_defn(citation_row, overwrite, False):
+                if not CitationWB.fill_defn(citation_row, overwrite, False):
                     citations_with_no_def.append(citation_row)
 
             print("Definition still required...")
@@ -1099,7 +1229,6 @@ class CitationWB(object):
 ###############################################################################
 
 
-
 ###############################################################################
 def def_specified(cell):
     # type (Cell) -> bool
@@ -1116,31 +1245,6 @@ def def_specified(cell):
 ###############################################################################
 
 
-###############################################################################
-def find_citations_with_no_def(ws,
-                               min_num_chars = 1,
-                               max_num_chars = 1):
-    # type (Worksheet, int, int) -> List[Dict]
-    """
-    Finds citation rows with no associated definition
-
-    :param ws:              A citation worksheet
-    :param min_num_chars:   Minimum number of characters in the phrase
-    :param max_num_chars:   Maximum number of characters in the phrase,
-                            if 0 no upper limit is imposed on the phrase length
-    :returns the list of citation rows with no definition
-    """
-    citation_rows = CitationWB.find_matches_in_sheet(ws, "", CITE_FLD_DEFN)
-    if max_num_chars > 0:
-        citation_rows = [row for row in citation_rows if row[CITE_FLD_PHRASE].value and
-                                                         len(row[CITE_FLD_PHRASE].value) >= min_num_chars and
-                                                         len(row[CITE_FLD_PHRASE].value) <= max_num_chars]
-    else:
-        citation_rows = [row for row in citation_rows if row[CITE_FLD_PHRASE].value and
-                                                         len(row[CITE_FLD_PHRASE].value) >= min_num_chars]
-    return citation_rows
-###############################################################################
-
 
 ###############################################################################
 def show_char_decomposition(c):
@@ -1155,80 +1259,6 @@ def show_char_decomposition(c):
     for dec in decs:
         print(dec)
 
-###############################################################################
-
-
-###############################################################################
-def fill_defn(citation_row,
-              overwrite = False,
-              audit_only = False):
-    # type: (Dict, bool, bool) -> bool
-    """
-    Fills in the definition (including Jyutping transcription) of a citation
-    row.
-
-    :param  citation_row:   A row from a citation worksheet
-    :param  overwrite:      If True, overwrites existing definition information
-    :param  audit_only:     If True, print the definition data without
-                            modifying the citation worksheet
-    :returns True if definition data was found
-    """
-
-    #
-    # Check for the existence of a valid phrase cell before proceeding
-    #
-    phrase_cell = citation_row[CITE_FLD_PHRASE]
-    if not phrase_cell or not phrase_cell.value:
-        return False
-
-    #
-    # Retrieve the worksheet and row via the phrase_cell
-    #
-    ws          = phrase_cell.parent
-    row_number  = phrase_cell.row
-
-    INTRA_DEF_SEP   = ", "
-    INTER_DEF_SEP   = ";\n"
-
-    jsonDecoder = json.JSONDecoder()
-
-    #
-    # Each search result bundles up a list of English definitions and
-    # Jyutping transcriptions corresponding to the phrase
-    #
-    dict_search_res = canto_dict.search_dict(phrase_cell.value)
-    defn_vals = list()
-    jyutping_vals = list()
-    for search_res in dict_search_res:
-        #
-        # Generate English and Jyutping strings
-        #
-        defn_list = jsonDecoder.decode(search_res[ccdict.DE_ENGLISH])
-        defn_list = list(filter(None, defn_list))
-        if len(defn_list) != 0:
-            defn_vals.append(INTRA_DEF_SEP.join(defn_list))
-        jyutping_list = jsonDecoder.decode(search_res[ccdict.DE_JYUTPING])
-        jyutping_list = list(filter(None, jyutping_list))
-        if len(jyutping_list) == 0:
-            jyutping_list.append("?")
-        jyutping_vals.append(INTRA_DEF_SEP.join(jyutping_list))
-
-    jyut_cell = citation_row[CITE_FLD_JYUTPING]
-    defn_cell = citation_row[CITE_FLD_DEFN]
-
-    print("{}:\t{}".format(phrase_cell.row, phrase_cell.value))
-    print(INTER_DEF_SEP.join(["\t{}".format(jyutping) for jyutping in jyutping_vals]))
-    print(INTER_DEF_SEP.join(["\t{}".format(defn) for defn in defn_vals]))
-
-    if not audit_only:
-        if not jyut_cell.value or overwrite:
-            jyut_cell.value = INTER_DEF_SEP.join(jyutping_vals)
-            assign_style(jyut_cell)
-        if not defn_cell.value or overwrite:
-            defn_cell.value = INTER_DEF_SEP.join(defn_vals)
-            assign_style(defn_cell)
-
-    return len(defn_vals) > 0 or len(jyutping_vals) > 0
 ###############################################################################
 
 
@@ -1256,8 +1286,10 @@ if __name__ == "__main__":
 #   citewb.display_matches_for_file("confounds.match",
 #                                   cit_fields = CITE_FLDS)
 
-#   citewb.display_matches("囉", cit_fields = [CITE_FLD_LBL_VERBOSE, CITE_FLD_PHRASE, CITE_FLD_CITE_TEXT, CITE_FLD_DEFN], cell_type = CellType.CT_ALL,
+#   citewb.display_matches("囉", cit_fields = [CITE_FLD_LBL_VERBOSE, CITE_FLD_PHRASE, CITE_FLD_CITE_TEXT, CITE_FLD_DEFN], max_matches = 3)
+#   citewb.display_matches("囉", cit_fields = [CITE_FLD_LBL_VERBOSE, CITE_FLD_PHRASE, CITE_FLD_CITE_TEXT, CITE_FLD_DEFN], cit_type = CitType.CT_ALL,
 #           max_matches = 3)
+#   citewb.display_matches("囉", cit_fields = [CITE_FLD_LBL_VERBOSE, CITE_FLD_PHRASE, CITE_FLD_CITE_TEXT, CITE_FLD_DEFN], cit_type = CitType.CT_REFERRING)
 #   citewb.display_matches("", CITE_FLD_TOPIC, do_re_search = True, cit_fields = CITE_FLDS)
 #   citewb.display_matches("..武", CITE_FLD_TOPIC, do_re_search = True, cit_fields = CITE_FLDS)
 #   citewb.display_matches("囉", cit_fields = CITE_FLDS)
@@ -1268,7 +1300,5 @@ if __name__ == "__main__":
 
     if  sys.version_info.major ==  2:
         show_char_decomposition('彆')
-#       cjk = characterlookup.CharacterLookup('T')
-#       cells = citewb.find_cells_with_shape_and_value(CJK_SHAPE_LTR, '口', 0)
-#       for cell in cells:
-#           print(format_cit_row(cell.parent, cell.row))
+        matches = citewb.find_cits_by_shape_and_value(CJK_SHAPE_LTR, '口', 0)
+        citewb.display_cit_values_list(matches)
