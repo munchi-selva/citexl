@@ -92,9 +92,9 @@ CITE_FLDS = [eval(fld) for fld in list(locals().keys()) if  re.match("CITE_FLD_.
 # Mapping between citation and CantoDict fields
 ###############################################
 CiteFldToDictFld = {
-    CITE_FLD_PHRASE:     ccdict.DE_TRAD,
-    CITE_FLD_JYUTPING:   ccdict.DE_JYUTPING,
-    CITE_FLD_DEFN:       ccdict.DE_ENGLISH
+    CITE_FLD_PHRASE:     ccdict.DE_FLD_TRAD,
+    CITE_FLD_JYUTPING:   ccdict.DE_FLD_JYUTPING,
+    CITE_FLD_DEFN:       ccdict.DE_FLD_ENGLISH
 }
 
 
@@ -1181,11 +1181,11 @@ class CitationWB(object):
             #
             # Generate English and Jyutping strings
             #
-            defn_list = jsonDecoder.decode(search_res[ccdict.DE_ENGLISH])
+            defn_list = jsonDecoder.decode(search_res[ccdict.DE_FLD_ENGLISH])
             defn_list = list(filter(None, defn_list))
             if len(defn_list) != 0:
                 defn_vals.append(INTRA_DEF_SEP.join(defn_list))
-            jyutping_list = jsonDecoder.decode(search_res[ccdict.DE_JYUTPING])
+            jyutping_list = jsonDecoder.decode(search_res[ccdict.DE_FLD_JYUTPING])
             jyutping_list = list(filter(None, jyutping_list))
             if len(jyutping_list) == 0:
                 jyutping_list.append("?")
@@ -1224,13 +1224,19 @@ class CitationWB(object):
         :parm   ws_name:    Name of a citation worksheet
         :param  overwrite:  If True, overwrite any existing content in cells to be
                             filled out
-        :returns Nothing
+        :returns the list of citations that still have no definition
         """
+        cits_with_no_def = list()
         if ws_name in self.get_valid_cit_sheet_names():
             ws = self.wb.get_sheet_by_name(ws_name)
             self.get_refs_for_ws_phrases(ws_name, overwrite, False)
 
-            cits_with_no_def = list()
+            fields_to_fill = [CITE_FLD_CHAPTER, CITE_FLD_PAGE, CITE_FLD_LINE, \
+                              CITE_FLD_LINE_INSTANCE, \
+                              CITE_FLD_ID, CITE_FLD_LBL_SHORT, CITE_FLD_LBL_VERBOSE,
+                              CITE_FLD_CITE_TEXT,
+                              CITE_FLD_COUNT]
+
 
             #
             # Attempt to fill in definitions/Jyutping for single character phrases
@@ -1238,7 +1244,7 @@ class CitationWB(object):
             cits_to_fill = self.find_citations_with_no_def(ws)
             for cit_row in cits_to_fill:
                 if not CitationWB.fill_defn(cit_row, overwrite, False):
-                    cits_with_no_def.append(self.get_cit_values(cit_row, fields_to_fill = [CITE_FLD_CITE_TEXT, CITE_FLD_LBL_VERBOSE]))
+                    cits_with_no_def.append(self.get_cit_values(cit_row, fields_to_fill = fields_to_fill))
 
             #
             # Repeat for multi-character phrases
@@ -1246,10 +1252,12 @@ class CitationWB(object):
             cits_to_fill = self.find_citations_with_no_def(ws, 2, -1)
             for cit_row in cits_to_fill:
                 if not CitationWB.fill_defn(cit_row, overwrite, False):
-                    cits_with_no_def.append(self.get_cit_values(cit_row, fields_to_fill = [CITE_FLD_CITE_TEXT, CITE_FLD_LBL_VERBOSE]))
+                    cits_with_no_def.append(self.get_cit_values(cit_row, fields_to_fill = fields_to_fill))
 
-            print("Definition still required...")
-            self.display_cit_values_list(cits_with_no_def, [CITE_FLD_LBL_VERBOSE, CITE_FLD_PHRASE, CITE_FLD_CITE_TEXT], "\t")
+            if len(cits_with_no_def) != 0:
+                print("Definition still required...")
+                self.display_cit_values_list(cits_with_no_def, [CITE_FLD_LBL_VERBOSE, CITE_FLD_PHRASE, CITE_FLD_CITE_TEXT], "\t")
+        return cits_with_no_def
     ###########################################################################
 
 
@@ -1263,11 +1271,10 @@ class CitationWB(object):
 
         :param  overwrite:  If True, overwrite any existing content in cells
                             to be filled out
-        :returns Nothing
+        :returns the list of citations that still have no definition
         """
         last_sheet_name = self.get_valid_cit_sheet_names()[-1]
-
-        self.fill_in_sheet(last_sheet_name, overwrite)
+        return self.fill_in_sheet(last_sheet_name, overwrite)
 ###############################################################################
 
 
@@ -1279,6 +1286,7 @@ def def_specified(cell):
 
     :param  cell:   The cell
     :returns True if the cell matches up with a definition
+
     """
     if not cell is None:
         def_loc = '{}{}'.format(get_col_id(cell.parent, CITE_FLD_DEFN), cell.row)
@@ -1319,10 +1327,14 @@ if __name__ == "__main__":
     main()
 
     citewb = CitationWB()
-#   citewb.fill_in_last_sheet(True)
+#   cits_with_no_defs = citewb.fill_in_last_sheet(True)
+#   cits_with_no_defs = list()
 #   for sheet_name in citewb.cit_sheet_names:
-#       citewb.fill_in_sheet(sheet_name, True)
+#       cits_with_no_defs.extend(citewb.fill_in_sheet(sheet_name, True))
 #   citewb.save_changes()
+
+#   cit_file = open("Duke_of_Mount_Deer.cit", "w")
+#   json.dump(cits_with_no_defs, cit_file)
 
 #   citewb.display_matches_for_file("confounds.match",
 #                                   cit_fields = CITE_FLDS)
