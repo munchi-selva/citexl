@@ -52,11 +52,10 @@ else:
 # Constants
 ###############################################################################
 
-#######################################################
-# Default source and destination spreadsheet file names
-#######################################################
-SOURCE_FILE = '/mnt/d/Books_and_Literature/Notes/Cha/Duke_of_Mount_Deer.xlsx'
-DEST_FILE   = '/mnt/d/Books_and_Literature/Notes/Cha/Mount_Deer.xlsx'
+######################################
+# Default source spreadsheet file name
+######################################
+SOURCE_FILE     = "/mnt/d/Books_and_Literature/Notes/Cha/Duke_of_Mount_Deer.xlsx"
 
 #######################
 # Worksheet style names
@@ -71,7 +70,7 @@ STYLE_LINK      = 'BookRef_Link'
 CITE_FLD_CHAPTER        = "回"                  # Generated
 CITE_FLD_PAGE           = "頁"                  # Retrieved/generated
 CITE_FLD_LINE           = "直行"                # Retrieved/generated
-CITE_FLD_LINE_INSTANCE  = "instance_number"     # Generated
+CITE_FLD_INSTANCE       = "instance_number"     # Generated
 CITE_FLD_CITE_TEXT      = "引句"                # Retrieved
 CITE_FLD_CATEGORY       = "範疇"                # Retrieved
 CITE_FLD_TOPIC          = "題"                  # Retrieved
@@ -82,11 +81,13 @@ CITE_FLD_ID             = "cite_id"             # Generated
 CITE_FLD_LBL_SHORT      = "cit_label_short"     # Generated
 CITE_FLD_LBL_VERBOSE    = "cit_label_verbose"   # Generated
 CITE_FLD_COUNT          = "cit_count"           # Generated
+CITE_FLD_PHRASE_FIRST_INSTANCE  = "cit_phrase_first_instance"   # Generated
 
 #
 # Get a list of all citation fields
 #
 CITE_FLDS = [eval(fld) for fld in list(locals().keys()) if  re.match("CITE_FLD_.*", fld)]
+
 
 ###############################################
 # Mapping between citation and CantoDict fields
@@ -114,12 +115,18 @@ CitType = IntEnum('CitType',  'CT_NONE        \
 # Names of citation worksheets
 ##############################
 CITATION_SHEETS = [
+    '新序',
+    '一圖',
     '一', '二', '三', '四', '五', '六', '七', '八', '九', '十',
+    '二圖',
     '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十',
-    '二十一', '二十二', '二十三', '二十四', '二十五', '二十六', '二十七', '二十八', '二十九', '三十',
     '三圖',
+    '二十一', '二十二', '二十三', '二十四', '二十五', '二十六', '二十七', '二十八', '二十九', '三十',
+    '四圖',
     '三十一', '三十二', '三十三', '三十四', '三十五', '三十六', '三十七', '三十八', '三十九', '四十',
-    '四十一', '四十二', '四十三', '四十四', '四十五', '四十六', '四十七', '四十八', '四十九', '五十'
+    '五圖',
+    '四十一', '四十二', '四十三', '四十四', '四十五', '四十六', '四十七', '四十八', '四十九', '五十',
+    '附錄', '後記'
 ]
 
 ########################################################################
@@ -206,49 +213,6 @@ def header_row(ws):
 
 
 ###############################################################################
-def column_mappings(ws):
-    # type (Worksheet) -> Dict
-    """
-    Returns the mappings between a worksheet's column names and letters.
-    The mappings are cached for reuse the first time the function is called.
-
-    :param ws:  The worksheet
-    :returns:   A dictionary mapping column names to column letters
-    """
-    if not ws.title in column_mappings.col_dicts:
-        col_dict        = dict()
-        for header_cell in header_row(ws):
-            col_name    = header_cell.value
-            col_letter  = header_cell.column_letter
-            col_dict[col_name] = col_letter
-        column_mappings.col_dicts[ws.title] = col_dict
-    return column_mappings.col_dicts[ws.title]
-
-# Faking a static variable that stores the results for column_mappings() via
-# the function's __dict__ dictionary attribute.
-# See:
-#   https://stackoverflow.com/questions/279561/what-is-the-python-equivalent-of-static-variables-inside-a-function
-#   https://www.python.org/dev/peps/pep-0232/
-column_mappings.col_dicts = dict()
-###############################################################################
-
-
-###############################################################################
-def get_col_id(ws, col_name):
-    # type (Worksheet, str) -> str
-    """
-    Returns the letter corresponding to the column with the given name in the
-    specified worksheet.
-
-    :param ws:          The worksheet
-    :param col_name:    The column name
-    :returns:   The column's letter
-    """
-    return column_mappings(ws)[col_name]
-###############################################################################
-
-
-###############################################################################
 def get_named_row(ws,
                   row_number):
     # type: (Worksheet, int) -> Dict
@@ -299,7 +263,9 @@ class CitationWB(object):
     ###########################################################################
     def __init__(self,
                  src_file           = SOURCE_FILE,
-                 cit_sheet_names    = CITATION_SHEETS):
+                 cit_sheet_names    = CITATION_SHEETS,
+                 cit_id_fields      = [{"name": CITE_FLD_PAGE, "width": 2},
+                                       {"name": CITE_FLD_LINE, "width": 2}]):
         # type: (str, List) -> CitationWB
         """
         Citation workbook constructor
@@ -307,10 +273,14 @@ class CitationWB(object):
         :param  src_file:           Path to the source spreadsheet file
         :param  cit_sheet_names:    Potential citation worksheet names
                                     (some may not yet be created/filled in)
+        :param  cit_id_fields:      The fields that provide an identifier for
+                                    a citation
         """
         self.src_file = src_file
         self.cit_sheet_names = cit_sheet_names
+        self.cit_id_fields = cit_id_fields
         self.wb = None
+        self.ws_col_dicts = None
         self.wb_links = None
         self.reload()
     ###########################################################################
@@ -323,19 +293,24 @@ class CitationWB(object):
         """
         if self.wb:
             self.wb.close()
+            self.ws_col_dicts = None
             self.wb_links = None
         self.wb = load_workbook(self.src_file)
     ###########################################################################
 
 
     ###########################################################################
-    def save_changes(self, filename = DEST_FILE):
+    def save_changes(self, filename = None):
         # type: (str) -> None
         """
         Saves the workbook to the chosen file
-        :param  filename    The destination filename
+        :param  filename    The destination filename.
+                            If this is not provided, a modified version of the
+                            source filename is used.
         :returns Nothing
         """
+        if not filename:
+            filename = re.sub("([.].*$)", ".mod\g<1>", self.src_file)
         self.wb.save(filename)
     ###########################################################################
 
@@ -365,8 +340,46 @@ class CitationWB(object):
 
 
     ###########################################################################
-    @staticmethod
-    def get_defn_links(ws):
+    def get_column_mappings(self, ws):
+        # type (Worksheet) -> Dict
+        """
+        Returns the mappings between a worksheet's column names and letters.
+        A mappings dictionary is initialised/populated as required.
+
+        :param ws:  The worksheet
+        :returns:   A dictionary mapping column names to column letters
+        """
+        if not self.ws_col_dicts:
+            self.ws_col_dicts = dict()
+
+        if not ws.title in self.ws_col_dicts:
+            ws_col_dict        = dict()
+            for header_cell in header_row(ws):
+                col_name    = header_cell.value
+                col_letter  = header_cell.column_letter
+                ws_col_dict[col_name] = col_letter
+            self.ws_col_dicts[ws.title] = ws_col_dict
+        return self.ws_col_dicts[ws.title]
+    ###########################################################################
+
+
+    ###########################################################################
+    def get_col_id(self, ws, col_name):
+        # type (Worksheet, str) -> str
+        """
+        Returns the letter corresponding to the column with the given name in
+        the specified worksheet.
+
+        :param ws:          The worksheet
+        :param col_name:    The column name
+        :returns the column's letter
+        """
+        return self.get_column_mappings(ws)[col_name]
+    ###########################################################################
+
+
+    ###########################################################################
+    def get_defn_links(self, ws):
         # type (Worksheet) -> List[str]
         """
         Finds links (potentially defined names in other worksheets) in citation
@@ -376,7 +389,7 @@ class CitationWB(object):
         :returns the list of link targets in the worksheet
         """
         links = [defn_cell.hyperlink.location for defn_cell
-                    in ws[get_col_id(ws, CITE_FLD_DEFN)]
+                    in ws[self.get_col_id(ws, CITE_FLD_DEFN)]
                     if defn_cell.hyperlink and defn_cell.hyperlink.location]
         return links
     ###########################################################################
@@ -395,7 +408,7 @@ class CitationWB(object):
             #
             self.wb_links = list()
             for ws in self.get_cit_sheets():
-                self.wb_links.extend(CitationWB.get_defn_links(ws))
+                self.wb_links.extend(self.get_defn_links(ws))
 
         #
         # Return the mapping between links and occurrences
@@ -446,7 +459,7 @@ class CitationWB(object):
                            fields_to_fill = [CITE_FLD_CHAPTER, \
                                              CITE_FLD_PAGE, \
                                              CITE_FLD_LINE, \
-                                             CITE_FLD_LINE_INSTANCE, \
+                                             CITE_FLD_INSTANCE, \
                                              CITE_FLD_ID, \
                                              CITE_FLD_LBL_SHORT, \
                                              CITE_FLD_LBL_VERBOSE]):
@@ -460,7 +473,7 @@ class CitationWB(object):
                                 worksheet does not provide a (direct) value
         :returns a field name to value mapping for the relevant citation row
         """
-        return self.get_cit_values(get_named_row(ws, cit_row), fields_to_fill)
+        return self.get_cit_values(get_named_row(ws, row_number), fields_to_fill)
     ###########################################################################
 
 
@@ -470,7 +483,7 @@ class CitationWB(object):
                        fields_to_fill = [CITE_FLD_CHAPTER, \
                                          CITE_FLD_PAGE, \
                                          CITE_FLD_LINE, \
-                                         CITE_FLD_LINE_INSTANCE, \
+                                         CITE_FLD_INSTANCE, \
                                          CITE_FLD_ID, \
                                          CITE_FLD_LBL_SHORT, \
                                          CITE_FLD_LBL_VERBOSE]):
@@ -479,7 +492,7 @@ class CitationWB(object):
         Retrieves a citation row's values, formatted as field name to value mappings
 
         :param  cit_row:        The citation row
-        :param  fields_to_fill: Fields that should be generated/filled in if the
+        :param  fields_to_fill: Fields to be generated/filled in if the
                                 worksheet does not provide a (direct) value
         :returns a field name to value mapping for the specified row.
         """
@@ -488,23 +501,44 @@ class CitationWB(object):
         cit_values  = dict([(cit_data[0], cit_data[1].value) for cit_data in cit_row.items()])
 
         cit_chapter = ws.title
-        cit_page, _             = find_closest_value(ws, get_col_id(ws, CITE_FLD_PAGE), row_number)
-        cit_line, cit_instance  = find_closest_value(ws, get_col_id(ws, CITE_FLD_LINE), row_number)
-        cit_label_short         = "{}{}{}{}{}".format(cit_chapter, REF_LABEL_SEP, cit_page, REF_LABEL_SEP, cit_line)
-        cit_id                  = "{}{}{:02d}{}{:02d}{}{:02d}".format(
-                                      cit_chapter, DEF_NAME_ID_SEP,
-                                      cit_page, DEF_NAME_ID_SEP,
-                                      cit_line, DEF_NAME_ID_SEP, cit_instance)
+
+        #
+        # Identify the components of the citation row's ID, and how these
+        # appear in the row's labels
+        #
+        cit_id_comps    = list()
+        cit_label_strs  = [cit_chapter]
+        cit_id_strs     = [cit_chapter]
+        for id_field in self.cit_id_fields:
+            fld_name        = id_field["name"]
+            fld_format_str  = "{:0" + str(id_field["width"]) + "d}"
+
+            id_comp_val, id_comp_instance = find_closest_value(ws, self.get_col_id(ws, fld_name), row_number)
+
+            cit_id_comps.append((id_comp_val, fld_format_str))
+            cit_label_strs.append(str(id_comp_val))
+            cit_id_strs.append(fld_format_str.format(id_comp_val))
+
+            if fld_name in fields_to_fill:
+                #
+                # Make the field value available in the name/value mapping
+                #
+                cit_values[fld_name] = id_comp_val
+
+        #
+        # The instance number for the final ID component gives the instance
+        # number for the entire citation row
+        #
+        cit_id_strs.append(str(id_comp_instance))
+
+        cit_label_short = REF_LABEL_SEP.join(cit_label_strs)
+        cit_id = DEF_NAME_ID_SEP.join(cit_id_strs)
 
         cit_values[CITE_FLD_CHAPTER] = ws.title
-        if CITE_FLD_PAGE in fields_to_fill:
-            cit_values[CITE_FLD_PAGE] = cit_page
-        if CITE_FLD_LINE in fields_to_fill:
-            cit_values[CITE_FLD_LINE] = cit_line
-        if CITE_FLD_LINE_INSTANCE in fields_to_fill:
-            cit_values[CITE_FLD_LINE_INSTANCE] = cit_instance
+        if CITE_FLD_INSTANCE in fields_to_fill:
+            cit_values[CITE_FLD_INSTANCE] = cit_id_comps[-1][1]
         if CITE_FLD_CITE_TEXT in fields_to_fill:
-            cit_values[CITE_FLD_CITE_TEXT], _ = find_closest_value(ws, get_col_id(ws, CITE_FLD_CITE_TEXT), row_number)
+            cit_values[CITE_FLD_CITE_TEXT], _ = find_closest_value(ws, self.get_col_id(ws, CITE_FLD_CITE_TEXT), row_number)
         if CITE_FLD_ID in fields_to_fill:
             cit_values[CITE_FLD_ID] = cit_id
         if CITE_FLD_LBL_SHORT in fields_to_fill:
@@ -542,6 +576,9 @@ class CitationWB(object):
 
                 cit_values[CITE_FLD_DEFN] = defn_src_row[CITE_FLD_DEFN].value
                 cit_values[CITE_FLD_JYUTPING] = defn_src_row[CITE_FLD_JYUTPING].value
+        if CITE_FLD_PHRASE_FIRST_INSTANCE in fields_to_fill:
+            if self.get_cit_type(cit_row) == CitType.CT_REFERRING:
+                cit_values[CITE_FLD_PHRASE_FIRST_INSTANCE] = cit_row[CITE_FLD_DEFN].hyperlink.location
         return cit_values
     ###########################################################################
 
@@ -758,7 +795,7 @@ class CitationWB(object):
         #
         # Build the list of cells in the worksheet matching the search terms
         #
-        search_col  = get_col_id(ws, fld_name)
+        search_col  = self.get_col_id(ws, fld_name)
         matching_cells = ws[search_col][1:]
         if do_re_search:
             matching_cells  = [cell for cell in matching_cells if cell.value and any(re.search(term, cell.value) for term in search_expr)]
@@ -965,12 +1002,6 @@ class CitationWB(object):
                 ws_matches = [row for row in ws_matches if cjk.getDecompositionEntries(row[CITE_FLD_PHRASE].value)[0][0] == shape
                     and cjk.getDecompositionEntries(row[CITE_FLD_PHRASE].value)[0][pos+1][0] == value]
 
-    #       matches = [cell for cell in phrase_cells
-    #                       if def_specified(cell) and
-    #                          len(cjk.getDecompositionEntries(cell.value)) > 0 and
-    #                          cjk.getDecompositionEntries(cell.value)[0][0] == shape and
-    #                          cjk.getDecompositionEntries(cell.value)[0][pos+1][0] == value]
-
 
             #decomps = [(cell, cjk.getDecompositionEntries(cell.value)) for cell in
                     #phrase_cells if len(cjk.getDecompositionEntries(cell.value)) > 0 and
@@ -982,6 +1013,46 @@ class CitationWB(object):
             matches.extend(ws_matches)
 
         return [self.get_cit_values(row) for row in matches]
+    ###########################################################################
+
+
+    ###########################################################################
+    def get_sheet_cit_values(self,
+                             ws_name,
+                             cit_fields = CITE_FLDS):
+        # type: (str, List(str)) -> List(Dict)
+        """
+        Get the citation values for a given worksheet
+
+        :parm   ws_name:    Name of a citation worksheet
+        :param  cit_fields: TODO
+
+        :returns the worksheet's citation values as a list
+        """
+        cits = list()
+        if ws_name in self.get_valid_cit_sheet_names():
+            ws = self.wb.get_sheet_by_name(ws_name)
+            for row_number in range(2, ws.max_row + 1):
+                cits.append(self.get_cit_row_values(ws, row_number, cit_fields))
+        return cits
+    ###########################################################################
+
+
+    ###########################################################################
+    def get_all_cit_values(self,
+                           cit_fields = CITE_FLDS):
+        # type: (List(str)) -> List(Dict)
+        """
+        Get all citation values for the workbook
+
+        :param  cit_fields: TODO
+
+        :returns the workbook's citation values as a list
+        """
+        cits = list()
+        for ws_name in self.get_valid_cit_sheet_names():
+            cits.extend(self.get_sheet_cit_values(ws_name, cit_fields))
+        return cits
     ###########################################################################
 
 
@@ -1118,7 +1189,7 @@ class CitationWB(object):
             #
             # Iterate through all non-empty phrase cells of the chapter worksheet
             #
-            for phrase_cell in [c for c in ws[get_col_id(ws, CITE_FLD_PHRASE)][1:] if c.value]:
+            for phrase_cell in [c for c in ws[self.get_col_id(ws, CITE_FLD_PHRASE)][1:] if c.value]:
                 #
                 # Find the first cell to define the phrase
                 #
@@ -1232,7 +1303,7 @@ class CitationWB(object):
             self.get_refs_for_ws_phrases(ws_name, overwrite, False)
 
             fields_to_fill = [CITE_FLD_CHAPTER, CITE_FLD_PAGE, CITE_FLD_LINE, \
-                              CITE_FLD_LINE_INSTANCE, \
+                              CITE_FLD_INSTANCE, \
                               CITE_FLD_ID, CITE_FLD_LBL_SHORT, CITE_FLD_LBL_VERBOSE,
                               CITE_FLD_CITE_TEXT,
                               CITE_FLD_COUNT]
@@ -1278,23 +1349,6 @@ class CitationWB(object):
 ###############################################################################
 
 
-###############################################################################
-def def_specified(cell):
-    # type (Cell) -> bool
-    """
-    Checks if a given cell is associated with a definition.
-
-    :param  cell:   The cell
-    :returns True if the cell matches up with a definition
-
-    """
-    if not cell is None:
-        def_loc = '{}{}'.format(get_col_id(cell.parent, CITE_FLD_DEFN), cell.row)
-        return cell.parent[def_loc].style == STYLE_GENERAL
-    return False
-###############################################################################
-
-
 
 ###############################################################################
 def show_char_decomposition(c):
@@ -1333,8 +1387,9 @@ if __name__ == "__main__":
 #       cits_with_no_defs.extend(citewb.fill_in_sheet(sheet_name, True))
 #   citewb.save_changes()
 
-#   cit_file = open("Duke_of_Mount_Deer.cit", "w")
-#   json.dump(cits_with_no_defs, cit_file)
+#   cits = citewb.get_all_cit_values()
+#   cit_file = open("../citeview/Duke_of_Mount_Deer.cit", "w")
+#   json.dump(cits, cit_file)
 
 #   citewb.display_matches_for_file("confounds.match",
 #                                   cit_fields = CITE_FLDS)
@@ -1350,6 +1405,13 @@ if __name__ == "__main__":
 #   citewb.display_matches("..武", CITE_FLD_TOPIC, do_re_search = True, cit_fields = [CITE_FLD_CITE_TEXT, CITE_FLD_LBL_VERBOSE, CITE_FLD_CATEGORY, CITE_FLD_TOPIC, CITE_FLD_PHRASE, CITE_FLD_DEFN])
 
 #   citewb.display_multiply_used_defns()
+    citewb.display_matches("情節", cit_fields = [CITE_FLD_ID, CITE_FLD_LBL_SHORT, CITE_FLD_PAGE, CITE_FLD_LINE, CITE_FLD_INSTANCE, CITE_FLD_PHRASE, CITE_FLD_JYUTPING, CITE_FLD_DEFN])
+
+    hist_citewb = CitationWB(src_file = '/mnt/d/Books_and_Literature/Notes/Liu/Understanding_China.xlsx',
+                             cit_sheet_names    = ['一', '二', '三', '四'],
+                             cit_id_fields      = [{"name": CITE_FLD_PAGE, "width": 3},
+                                                   {"name": "面板", "width": 2},
+                                                   {"name": "段", "width": 2}])
 
     if  sys.version_info.major ==  2:
         show_char_decomposition('彆')
