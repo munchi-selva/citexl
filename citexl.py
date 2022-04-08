@@ -500,15 +500,19 @@ class CitationWB(object):
         row_number  = cit_row[CITE_FLD_PHRASE].row
         cit_values  = dict([(cit_data[0], cit_data[1].value) for cit_data in cit_row.items()])
 
-        cit_chapter = ws.title
+        cit_sheet_name = ws.title
+        # The worksheet name corresponds to the chapter numbers, potentially
+        # prefixed with part/volume numbers.
+        # In this case the components of the chapter number are separated by
+        # DEF_NAME_ID_SEP.
 
         #
         # Identify the components of the citation row's ID, and how these
         # appear in the row's labels
         #
         cit_id_comps    = list()
-        cit_label_strs  = [cit_chapter]
-        cit_id_strs     = [cit_chapter]
+        cit_label_strs  = [cit_sheet_name.replace(DEF_NAME_ID_SEP, REF_LABEL_SEP)]
+        cit_id_strs     = [cit_sheet_name]
         for id_field in self.cit_id_fields:
             fld_name        = id_field["name"]
             fld_format_str  = "{:0" + str(id_field["width"]) + "d}"
@@ -1284,7 +1288,8 @@ class CitationWB(object):
     ###########################################################################
     def fill_in_sheet(self,
                       ws_name,
-                      overwrite = False):
+                      overwrite = False,
+                      audit_only = False):
         # type: (str, bool) -> None
         """
         Fills in a citation worksheet by:
@@ -1300,7 +1305,7 @@ class CitationWB(object):
         cits_with_no_def = list()
         if ws_name in self.get_valid_cit_sheet_names():
             ws = self.wb.get_sheet_by_name(ws_name)
-            self.get_refs_for_ws_phrases(ws_name, overwrite, False)
+            self.get_refs_for_ws_phrases(ws_name, overwrite, audit_only)
 
             fields_to_fill = [CITE_FLD_CHAPTER, CITE_FLD_PAGE, CITE_FLD_LINE, \
                               CITE_FLD_INSTANCE, \
@@ -1413,6 +1418,11 @@ if __name__ == "__main__":
                                                    {"name": "面板", "width": 2},
                                                    {"name": "段", "width": 2}])
 
+    gu_citewb = CitationWB(src_file = '/mnt/d/Books_and_Literature/Notes/Gu/The_Sword_God_Smiles.xlsx',
+                           cit_sheet_names = ['序', '一_一', '一_二', '一_三', '一_四', '一_五', '一_六'],
+                           cit_id_fields = [{"name": "段", "width": 2},
+                                            {"name": CITE_FLD_PAGE, "width": 3},
+                                            {"name": CITE_FLD_LINE, "width": 2}])
     if  sys.version_info.major ==  2:
         show_char_decomposition('彆')
         matches = citewb.find_cits_by_shape_and_value(CJK_SHAPE_LTR, '口', 0)
