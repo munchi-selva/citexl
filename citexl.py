@@ -16,6 +16,7 @@ import json
 import re
 import sys
 from collections import Counter
+from collections import namedtuple
 from io import BytesIO
 
 from openpyxl import load_workbook
@@ -97,6 +98,12 @@ CiteFldToDictFld = {
     CITE_FLD_JYUTPING:   ccdict.DE_FLD_JYUTPING,
     CITE_FLD_DEFN:       ccdict.DE_FLD_ENGLISH
 }
+
+
+##########################################################################
+# Named tuple definition relevant to displaying values of a citation field
+##########################################################################
+CiteFldDefn = namedtuple("CiteFldDefn", "name disp_width")
 
 
 ###############################################################################
@@ -264,8 +271,8 @@ class CitationWB(object):
     def __init__(self,
                  src_file           = SOURCE_FILE,
                  cit_sheet_names    = CITATION_SHEETS,
-                 cit_id_fields      = [{"name": CITE_FLD_PAGE, "width": 2},
-                                       {"name": CITE_FLD_LINE, "width": 2}]):
+                 cit_id_fields      = [CiteFldDefn(CITE_FLD_PAGE, 2),
+                                       CiteFldDefn(CITE_FLD_LINE, 3)]):
         # type: (str, List) -> CitationWB
         """
         Citation workbook constructor
@@ -353,12 +360,7 @@ class CitationWB(object):
             self.ws_col_dicts = dict()
 
         if not ws.title in self.ws_col_dicts:
-            ws_col_dict        = dict()
-            for header_cell in header_row(ws):
-                col_name    = header_cell.value
-                col_letter  = header_cell.column_letter
-                ws_col_dict[col_name] = col_letter
-            self.ws_col_dicts[ws.title] = ws_col_dict
+            self.ws_col_dicts[ws.title] = {header_cell.value: header_cell.column_letter for header_cell in header_row(ws)}
         return self.ws_col_dicts[ws.title]
     ###########################################################################
 
@@ -514,8 +516,8 @@ class CitationWB(object):
         cit_label_strs  = [cit_sheet_name.replace(DEF_NAME_ID_SEP, REF_LABEL_SEP)]
         cit_id_strs     = [cit_sheet_name]
         for id_field in self.cit_id_fields:
-            fld_name        = id_field["name"]
-            fld_format_str  = "{:0" + str(id_field["width"]) + "d}"
+            fld_name        = id_field.name
+            fld_format_str  = "{:0" + str(id_field.disp_width) + "d}"
 
             id_comp_val, id_comp_instance = find_closest_value(ws, self.get_col_id(ws, fld_name), row_number)
 
@@ -1414,15 +1416,21 @@ if __name__ == "__main__":
 
     hist_citewb = CitationWB(src_file = '/mnt/d/Books_and_Literature/Notes/Liu/Understanding_China.xlsx',
                              cit_sheet_names    = ['一', '二', '三', '四'],
-                             cit_id_fields      = [{"name": CITE_FLD_PAGE, "width": 3},
-                                                   {"name": "面板", "width": 2},
-                                                   {"name": "段", "width": 2}])
+                             cit_id_fields      = [CiteFldDefn(CITE_FLD_PAGE, 3),
+                                                   CiteFldDefn("面板", 2),
+                                                   CiteFldDefn("段", 2)])
+    hist_citewb.fill_in_sheet('二', True)
+    hist_citewb.save_changes()
 
     gu_citewb = CitationWB(src_file = '/mnt/d/Books_and_Literature/Notes/Gu/The_Sword_God_Smiles.xlsx',
-                           cit_sheet_names = ['序', '一_一', '一_二', '一_三', '一_四', '一_五', '一_六'],
-                           cit_id_fields = [{"name": "段", "width": 2},
-                                            {"name": CITE_FLD_PAGE, "width": 3},
-                                            {"name": CITE_FLD_LINE, "width": 2}])
+                           cit_sheet_names = ['序',
+                                              '一_一', '一_二', '一_三', '一_四', '一_五', 
+                                              '一_六', '一_七', '一_八', '一_九', '一_十', 
+                                              '二_一', ' 二_二', '二_三', '二_四', '二_五',
+                                              '二_六', '二_七', '二_八', '二_九', '二_十'],
+                           cit_id_fields = [CiteFldDefn("段", 2),
+                                            CiteFldDefn(CITE_FLD_PAGE, 3),
+                                            CiteFldDefn(CITE_FLD_LINE, 2)])
     if  sys.version_info.major ==  2:
         show_char_decomposition('彆')
         matches = citewb.find_cits_by_shape_and_value(CJK_SHAPE_LTR, '口', 0)
